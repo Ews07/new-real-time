@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Forum Login</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+
+<body>
+  <div class="container">
+    <!-- LOGIN FORM -->
+    <div id="login-section">
+      <h2>Login</h2>
+      <form id="login-form">
+        <input type="text" placeholder="Email or Nickname" id="login-identifier" required />
+        <input type="password" placeholder="Password" id="login-password" required />
+        <button type="submit">Login</button>
+      </form>
+      <p>Don't have an account? <button id="show-register">Register</button></p>
+    </div>
+
+    <!-- REGISTER FORM (hidden by default) -->
+    <div id="register-section" style="display: none;">
+      <h2>Register</h2>
+      <form id="register-form">
+        <input type="text" placeholder="Nickname" id="reg-nickname" required />
+        <input type="email" placeholder="Email" id="reg-email" required />
+        <input type="password" placeholder="Password" id="reg-password" required />
+        <input type="number" placeholder="Age" id="reg-age" required />
+        <select id="reg-gender">
+          <option value="">Gender</option>
+          <option>Male</option>
+          <option>Female</option>
+          <option>Other</option>
+        </select>
+        <input type="text" placeholder="First Name" id="reg-first" />
+        <input type="text" placeholder="Last Name" id="reg-last" />
+        <button type="submit">Register</button>
+      </form>
+      <p>Already have an account? <button id="show-login">Back to Login</button></p>
+    </div>
+
+    <!-- MAIN CHAT SECTION -->
+    <div id="chat-section" style="display: none; display: flex; gap: 20px;">
+      <!-- Users Column -->
+      <div id="user-column">
+        <button id="logout-btn">Logout</button>
+        <ul id="online-users"></ul>
+      </div>
+
+      <!-- Center Column for Posts -->
+      <div id="main-column" style="flex-grow: 1;">
+        <h2>Welcome to the Forum!</h2>
+        <button id="create-post-btn">+ Create Post</button>
+        <div id="post-form" style="display: none; margin-top: 10px;">
+          <input type="text" id="post-title" placeholder="Title" />
+          <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
+          <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
+          <button onclick="submitPost()">Post</button>
+        </div>
+        <div id="post-container">
+          <div id="post-feed"></div>
+
+          <div id="single-post-view" class="hidden">
+            <h3 id="single-post-title"></h3>
+            <p id="single-post-content"></p>
+
+            <div id="comments-list"></div>
+            <textarea id="comment-text" placeholder="Write a comment..."></textarea>
+            <button id="submit-comment">Comment</button>
+            <button onclick="backToFeed()">⬅ Back</button>
+          </div>
+        </div>
+      </div>
+      <!-- Chat Box (bottom of main column or floating if needed) -->
+      <div id="chat-box" style="width: 300px;">
+        <div id="chat-history" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; margin-bottom: 10px;">
+        </div>
+        <input type="text" id="chat-input" placeholder="Type your message..." />
+      </div>
+    </div>
+
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+
+</html>
