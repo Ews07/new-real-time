@@ -208,6 +208,7 @@ func CreatePostHandler(db *sql.DB) http.HandlerFunc {
 
 		var req CreatePostRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Println("JSON decode error:", err)
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
 		}
@@ -223,14 +224,19 @@ func CreatePostHandler(db *sql.DB) http.HandlerFunc {
 		postUUID := uuid.New().String()
 		now := time.Now()
 
+		log.Println("Creating post:", postUUID, userUUID, req.Title, req.Content, now)
+
 		err := InsertPost(db, postUUID, userUUID, req.Title, req.Content, now)
 		if err != nil {
+			log.Println("InsertPost error:", err)
 			http.Error(w, "Failed to insert post", http.StatusInternalServerError)
 			return
 		}
 
+		log.Println("Inserting categories:", req.Categories)
 		err = InsertPostCategories(db, postUUID, req.Categories)
 		if err != nil {
+			log.Println("InsertPostCategories error:", err)
 			http.Error(w, "Failed to insert categories", http.StatusInternalServerError)
 			return
 		}
@@ -313,13 +319,25 @@ func MeHandler() http.Handler {
 
 func GetPostsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		posts, err := LoadAllPosts(db)
+		offsetStr := r.URL.Query().Get("offset")
+		limitStr := r.URL.Query().Get("limit")
+
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			offset = 0
+		}
+
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit <= 0 || limit > 50 {
+			limit = 10
+		}
+
+		posts, err := GetPostsPaginated(db, offset, limit)
 		if err != nil {
 			http.Error(w, "Failed to load posts", http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(posts)
 	}
 }
@@ -377,5 +395,3 @@ func CreateCommentHandler(db *sql.DB) http.HandlerFunc {
 		w.Write([]byte("Comment posted"))
 	}
 }
-
-

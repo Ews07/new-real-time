@@ -2,6 +2,9 @@ let socket = null
 let chatWith = ""
 let messagesOffset = 0
 let currentUserUUID = ""
+let postOffset = 0
+const postLimit = 5
+
 
 // SPA View Switcher
 function showLoginUI() {
@@ -14,7 +17,7 @@ function showChatUI() {
   document.getElementById("login-section").style.display = "none"
   document.getElementById("register-section").style.display = "none"
   document.getElementById("chat-section").style.display = "block"
-  loadPostFeed()
+  resetPostFeed()
 }
 
 // On Page Load
@@ -68,9 +71,11 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("logout-btn").addEventListener("click", logout)
 
   document.getElementById("create-post-btn").addEventListener("click", () => {
-  const form = document.getElementById("post-form")
-  form.style.display = form.style.display === "none" ? "block" : "none"
-})
+    const form = document.getElementById("post-form")
+    // if (form) {
+      form.style.display = form.style.display === "none" ? "block" : "none"
+    // }
+  })
 
 })
 
@@ -233,11 +238,13 @@ function renderOnlineUsers(users) {
 
 
 function loadPostFeed() {
-  fetch("/posts", { credentials: "include" })
+  fetch(`/posts?offset=${postOffset}&limit=${postLimit}`, {
+    credentials: "include"
+  })
     .then(res => res.json())
     .then(posts => {
       const feed = document.getElementById("post-feed")
-      feed.innerHTML = ""
+
       posts.forEach(p => {
         const div = document.createElement("div")
         div.className = "post-item"
@@ -245,8 +252,18 @@ function loadPostFeed() {
         div.onclick = () => openPostView(p.uuid)
         feed.appendChild(div)
       })
+
+      // Hide "Load More" if no more posts
+      if (posts.length < postLimit) {
+        document.getElementById("load-more-btn").style.display = "none"
+      } else {
+        document.getElementById("load-more-btn").style.display = "block"
+      }
+
+      postOffset += posts.length
     })
 }
+
 
 let currentPostUUID = ""
 
@@ -307,8 +324,11 @@ function submitPost() {
       document.getElementById("post-title").value = ""
       document.getElementById("post-content").value = ""
       document.getElementById("post-categories").value = ""
-      document.getElementById("post-form").style.display = "none"
-      loadPostFeed()
+
+      const form = document.getElementById("post-form")
+      if (form) form.style.display = "none"
+
+      resetPostFeed()
     })
     .catch(err => {
       alert("Error posting: " + err.message)
@@ -334,4 +354,11 @@ document.getElementById("submit-comment").addEventListener("click", () => {
     }
   })
 })
+
+function resetPostFeed() {
+  postOffset = 0
+  document.getElementById("post-feed").innerHTML = ""
+  document.getElementById("load-more-btn").style.display = "block"
+  loadPostFeed()
+}
 

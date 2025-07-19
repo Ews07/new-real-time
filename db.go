@@ -118,19 +118,45 @@ func DeleteSession(db *sql.DB, sessionUUID string) error {
 }
 
 func InsertPost(db *sql.DB, postUUID, userUUID, title, content string, createdAt time.Time) error {
-	stmt := "INSERT INTO posts (uuid, user_uuid, title, content, created_at) VALUES (?, ?, ?, ?, ?)"
+	stmt := "INSERT INTO posts (post_uuid, user_uuid, title, content, created_at) VALUES (?, ?, ?, ?, ?)"
 	_, err := db.Exec(stmt, postUUID, userUUID, title, content, createdAt)
 	return err
 }
 
 func InsertPostCategories(db *sql.DB, postUUID string, categories []string) error {
-	stmt := "INSERT INTO post_categories (post_uuid, category) VALUES (?, ?)"
+	if len(categories) == 0 {
+		return nil
+	}
+
+	// Get the post ID (integer) using post_uuid
+	var postID int
+	err := db.QueryRow("SELECT id FROM posts WHERE post_uuid = ?", postUUID).Scan(&postID)
+	if err != nil {
+		return fmt.Errorf("failed to get post ID from post_uuid: %w", err)
+	}
+
 	for _, cat := range categories {
-		_, err := db.Exec(stmt, postUUID, cat)
+		// Insert category if it doesn't exist yet
+		var categoryID int
+		err := db.QueryRow("SELECT id FROM categories WHERE name = ?", cat).Scan(&categoryID)
+		if err == sql.ErrNoRows {
+			res, err := db.Exec("INSERT INTO categories (name) VALUES (?)", cat)
+			if err != nil {
+				return fmt.Errorf("failed to insert category %s: %w", cat, err)
+			}
+			newID, _ := res.LastInsertId()
+			categoryID = int(newID)
+		} else if err != nil {
+			return fmt.Errorf("failed to query category %s: %w", cat, err)
+		}
+
+		// Insert into post_categories
+		_, err = db.Exec("INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)", postID, categoryID)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to link post and category: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -278,6 +304,32 @@ func GetRecentPosts(db *sql.DB, limit int) ([]Post, error) {
 		var p Post
 		if err := rows.Scan(&p.Title, &p.Content, &p.CreatedAt); err != nil {
 			return nil, err
+		}
+		posts = append(posts, p)
+	}
+	return posts, nil
+}
+
+func GetPostsPaginated(db *sql.DB, offset, limit int) ([]Post, error) {
+	query := `
+		SELECT posts.uuid, title, content, posts.created_at, users.nickname
+		FROM posts
+		JOIN users ON posts.user_uuid = users.uuid
+		ORDER BY posts.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	rows, err := db.Query(query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var posts []Post
+	for rows.Next() {
+		var p Post
+		err := rows.Scan(&p.UUID, &p.Title, &p.Content, &p.CreatedAt, &p.Nickname)
+		if err != nil {
+			continue
 		}
 		posts = append(posts, p)
 	}

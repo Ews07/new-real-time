@@ -60,12 +60,13 @@
           <button onclick="submitPost()">Post</button>
         </div>
         <div id="post-container">
-          <div id="post-feed"></div>
+          <div id="post-feed">
+            <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
+          </div>
 
           <div id="single-post-view" class="hidden">
             <h3 id="single-post-title"></h3>
             <p id="single-post-content"></p>
-
             <div id="comments-list"></div>
             <textarea id="comment-text" placeholder="Write a comment..."></textarea>
             <button id="submit-comment">Comment</button>
