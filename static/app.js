@@ -73,10 +73,10 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("create-post-btn").addEventListener("click", () => {
     const form = document.getElementById("post-form")
     // if (form) {
-      form.style.display = form.style.display === "none" ? "block" : "none"
+    form.style.display = form.style.display === "none" ? "block" : "none"
     // }
   })
-
+  document.getElementById("submit-post").addEventListener("click", submitPost)
 })
 
 // Login Logic
@@ -239,18 +239,20 @@ function renderOnlineUsers(users) {
 
 function loadPostFeed() {
   fetch(`/posts?offset=${postOffset}&limit=${postLimit}`, {
-    credentials: "include"
+    credentials: "include",
   })
     .then(res => res.json())
     .then(posts => {
       const feed = document.getElementById("post-feed")
-
+      console.log("postssss",posts)
       posts.forEach(p => {
         const div = document.createElement("div")
         div.className = "post-item"
         div.innerHTML = `<strong>${p.title}</strong><br>by ${p.nickname}<br><small>${new Date(p.created_at).toLocaleString()}</small>`
         div.onclick = () => openPostView(p.uuid)
         feed.appendChild(div)
+        console.log("feed",feed);
+        
       })
 
       // Hide "Load More" if no more posts
@@ -294,7 +296,56 @@ function backToFeed() {
   currentPostUUID = ""
 }
 
+// function submitPost() {
+//   const title = document.getElementById("post-title").value.trim()
+//   const content = document.getElementById("post-content").value.trim()
+//   const categoryInput = document.getElementById("post-categories").value.trim()
+
+//   if (!title || !content) {
+//     alert("Title and content are required.")
+//     return
+//   }
+
+//   const categories = categoryInput
+//     .split(",")
+//     .map(c => c.trim())
+//     .filter(c => c.length > 0)
+
+//   fetch("/posts", {
+//     method: "POST",
+//     credentials: "include",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({ title, content, categories })
+//   })
+//     .then(res => {
+//       if (!res.ok) throw new Error("Post failed")
+//       return res.text()
+//     })
+//     .then(() => {
+//       alert("Post created!")
+//       document.getElementById("post-title").value = ""
+//       document.getElementById("post-content").value = ""
+//       document.getElementById("post-categories").value = ""
+
+//       const postForm = document.getElementById("post-form")
+//       console.log("form element:", postForm) 
+//       if (postForm && postForm.style) postForm.style.display = "none"
+
+//       resetPostFeed()
+//     })
+//     .catch(err => {
+//       alert("Error posting: " + err.message)
+//     })
+// }
+
 function submitPost() {
+  const postForm = document.getElementById("post-form")
+  if (!postForm) {
+    console.error("post-form not found in DOM.")
+    alert("Post form not found. Are you logged in?")
+    return
+  }
+
   const title = document.getElementById("post-title").value.trim()
   const content = document.getElementById("post-content").value.trim()
   const categoryInput = document.getElementById("post-categories").value.trim()
@@ -313,8 +364,10 @@ function submitPost() {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, content, categories })
+    body: JSON.stringify({ title, content, categories }),
   })
+  // console.log(title, content, categories)
+
     .then(res => {
       if (!res.ok) throw new Error("Post failed")
       return res.text()
@@ -324,16 +377,16 @@ function submitPost() {
       document.getElementById("post-title").value = ""
       document.getElementById("post-content").value = ""
       document.getElementById("post-categories").value = ""
+      console.log(postForm, postForm.style)
 
-      const form = document.getElementById("post-form")
-      if (form) form.style.display = "none"
-
+      if (postForm && postForm.style) postForm.style.display = "none"
       resetPostFeed()
     })
     .catch(err => {
       alert("Error posting: " + err.message)
     })
 }
+
 
 
 document.getElementById("submit-comment").addEventListener("click", () => {

@@ -57,13 +57,11 @@
           <input type="text" id="post-title" placeholder="Title" />
           <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
           <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
-          <button onclick="submitPost()">Post</button>
+          <button id="submit-post">Post</button>
         </div>
         <div id="post-container">
-          <div id="post-feed">
-            <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
-          </div>
-
+          <div id="post-feed"></div>
+          <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
           <div id="single-post-view" class="hidden">
             <h3 id="single-post-title"></h3>
             <p id="single-post-content"></p>

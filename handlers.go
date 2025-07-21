@@ -331,8 +331,9 @@ func GetPostsHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil || limit <= 0 || limit > 50 {
 			limit = 10
 		}
-
 		posts, err := GetPostsPaginated(db, offset, limit)
+		log.Println("posts bck", posts)
+
 		if err != nil {
 			http.Error(w, "Failed to load posts", http.StatusInternalServerError)
 			return
@@ -352,6 +353,7 @@ func GetPostDetailsHandler(db *sql.DB) http.HandlerFunc {
 
 		post, err := LoadPostWithComments(db, postUUID)
 		if err != nil {
+			log.Printf("Error loading post: %v", err)
 			http.Error(w, "Failed to load post", http.StatusInternalServerError)
 			return
 		}

@@ -248,10 +248,10 @@ type FullPost struct {
 func LoadPostWithComments(db *sql.DB, postUUID string) (*FullPost, error) {
 	post := Post{}
 	err := db.QueryRow(`
-		SELECT posts.uuid, title, content, posts.created_at, users.nickname
+		SELECT posts.post_uuid, title, content, posts.created_at, users.nickname
 		FROM posts
 		JOIN users ON posts.user_uuid = users.uuid
-		WHERE posts.uuid = ?
+		WHERE posts.post_uuid = ?
 	`, postUUID).Scan(&post.UUID, &post.Title, &post.Content, &post.CreatedAt, &post.Nickname)
 	if err != nil {
 		return nil, err
@@ -262,7 +262,7 @@ func LoadPostWithComments(db *sql.DB, postUUID string) (*FullPost, error) {
 		FROM comments
 		JOIN users ON comments.user_uuid = users.uuid
 		JOIN posts ON posts.id = comments.post_id
-		WHERE posts.uuid = ?
+		WHERE posts.post_uuid = ?
 		ORDER BY comments.created_at ASC
 	`, postUUID)
 	if err != nil {
@@ -286,7 +286,7 @@ func LoadPostWithComments(db *sql.DB, postUUID string) (*FullPost, error) {
 func InsertComment(db *sql.DB, userUUID, postUUID, content string) error {
 	stmt := `
 		INSERT INTO comments (post_id, user_uuid, content, created_at)
-		VALUES ((SELECT id FROM posts WHERE uuid = ?), ?, ?, ?)
+		VALUES ((SELECT id FROM posts WHERE post_uuid = ?), ?, ?, ?)
 	`
 	_, err := db.Exec(stmt, postUUID, userUUID, content, time.Now())
 	return err
@@ -312,12 +312,13 @@ func GetRecentPosts(db *sql.DB, limit int) ([]Post, error) {
 
 func GetPostsPaginated(db *sql.DB, offset, limit int) ([]Post, error) {
 	query := `
-		SELECT posts.uuid, title, content, posts.created_at, users.nickname
-		FROM posts
-		JOIN users ON posts.user_uuid = users.uuid
-		ORDER BY posts.created_at DESC
-		LIMIT ? OFFSET ?
-	`
+	SELECT posts.post_uuid, title, content, posts.created_at, users.nickname
+	FROM posts
+	JOIN users ON posts.user_uuid = users.uuid
+	ORDER BY posts.created_at DESC
+	LIMIT ? OFFSET ?
+`
+
 	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		return nil, err
