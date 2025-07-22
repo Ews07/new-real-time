@@ -305,6 +305,7 @@ function openPostView(uuid) {
   fetch(`/post?uuid=${uuid}`, { credentials: "include" })
     .then(res => res.json())
     .then(data => {
+      document.getElementById("single-post-author").textContent = "Posted by:  " + data.nickname
       document.getElementById("single-post-title").textContent = data.title
       document.getElementById("single-post-content").textContent = data.content
 

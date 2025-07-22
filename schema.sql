@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     session_uuid TEXT UNIQUE NOT NULL,
     user_uuid TEXT NOT NULL,
     expires_at DATETIME NOT NULL,
-    FOREIGN KEY(user_uuid) REFERENCES users(uuid)
+    FOREIGN KEY(user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
 
 -- Categories table
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS posts (
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_uuid) REFERENCES users(uuid)
+    FOREIGN KEY(user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
 
 -- PostCategories (Many-to-Many relation)
@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS comments (
     user_uuid TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(post_id) REFERENCES posts(id),
-    FOREIGN KEY(user_uuid) REFERENCES users(uuid)
+    FOREIGN KEY(post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
 
 -- LikesDislikes table (for posts and comments)
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS likes_dislikes (
     is_like BOOLEAN NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_uuid, target_type, target_id),
-    FOREIGN KEY(user_uuid) REFERENCES users(uuid)
+    FOREIGN KEY(user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
 
 -- PrivateMessages table
@@ -77,6 +77,6 @@ CREATE TABLE IF NOT EXISTS private_messages (
     receiver_uuid TEXT NOT NULL,
     content TEXT NOT NULL,
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(sender_uuid) REFERENCES users(uuid),
-    FOREIGN KEY(receiver_uuid) REFERENCES users(uuid)
+    FOREIGN KEY(sender_uuid) REFERENCES users(uuid) ON DELETE CASCADE,
+    FOREIGN KEY(receiver_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );

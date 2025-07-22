@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -280,6 +281,7 @@ func LoadPostWithComments(db *sql.DB, postUUID string) (*FullPost, error) {
 		comments = append(comments, c)
 	}
 
+	log.Println("\n\n\n", post, "\n\n\n", comments)
 	return &FullPost{Post: post, Comments: comments}, nil
 }
 
