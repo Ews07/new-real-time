@@ -4,6 +4,7 @@ let messagesOffset = 0
 let currentUserUUID = ""
 let postOffset = 0
 const postLimit = 5
+let allUsers = []
 
 
 // SPA View Switcher
@@ -18,6 +19,7 @@ function showChatUI() {
   document.getElementById("register-section").style.display = "none"
   document.getElementById("chat-section").style.display = "block"
   resetPostFeed()
+  fetchAllUsers()
 }
 
 // On Page Load
@@ -110,6 +112,7 @@ function login() {
           currentUserUUID = data.user_uuid
           showChatUI()
           connectWebSocket()
+          fetchAllUsers()
         })
     })
     .catch(err => {
@@ -143,6 +146,18 @@ function register() {
     }
   })
 }
+
+//Fetch users
+function fetchAllUsers() {
+  fetch("/users", { credentials: "include" })
+    .then(res => res.json())
+    .then(users => {
+      allUsers = users
+      console.log(allUsers)
+      updateUserList()
+    })
+}
+
 
 // Logout
 function logout() {
@@ -223,18 +238,31 @@ function renderIncomingMessage(msg) {
   document.getElementById("chat-history").appendChild(div)
 }
 
-// Show online users
-function renderOnlineUsers(users) {
-  const list = document.getElementById("online-users")
+// Update online status and re-render
+function renderOnlineUsers(onlineList) {
+  allUsers.forEach(user => {
+    user.isOnline = onlineList.some(u => u.UserUUID === user.uuid && u.IsOnline)
+  })
+  updateUserList()
+}
+
+// Render all users in the user list
+function updateUserList() {
+  const list = document.getElementById("all-users") // Match your HTML
+  if (!list) {
+    console.error("user-list element not found")
+    return
+  }
   list.innerHTML = ""
-  users.forEach(user => {
+
+  allUsers.forEach(user => {
+    if (user.uuid === currentUserUUID) return // skip self
     const li = document.createElement("li")
-    li.textContent = `${user.UserUUID} (${user.IsOnline ? "🟢" : "⚪"})`
-    li.onclick = () => openChat(user.UserUUID)
+    li.innerHTML = `<span class="status">${user.isOnline ? "🟢" : "⚪"}</span> ${user.nickname}`
+    li.onclick = () => openChat(user.uuid)
     list.appendChild(li)
   })
 }
-
 
 
 function loadPostFeed() {

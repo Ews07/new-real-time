@@ -397,3 +397,34 @@ func CreateCommentHandler(db *sql.DB) http.HandlerFunc {
 		w.Write([]byte("Comment posted"))
 	}
 }
+
+func GetAllUsersHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query(`SELECT uuid, nickname FROM users`)
+		if err != nil {
+			http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var users []map[string]interface{}
+		for rows.Next() {
+			var uuid, nickname string
+			if err := rows.Scan(&uuid, &nickname); err == nil {
+				isOnline := false
+				if userPresence, ok := onlineUsers[uuid]; ok && userPresence.IsOnline {
+					isOnline = true
+				}
+				users = append(users, map[string]interface{}{
+					"uuid":     uuid,
+					"nickname": nickname,
+					"isOnline": isOnline,
+				})
+			}
+		}
+		log.Println(users)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}
+}

@@ -30,6 +30,7 @@ func main() {
 	r.Handle("/posts", AuthMiddleware(GetPostsHandler(db), db)).Methods("GET")
 	r.Handle("/post", AuthMiddleware(GetPostDetailsHandler(db), db)).Methods("GET")
 	r.Handle("/comment", AuthMiddleware(CreateCommentHandler(db), db)).Methods("POST")
+	r.Handle("/users", AuthMiddleware(GetAllUsersHandler(db), db)).Methods("GET")
 
 
 	// Serve static files
