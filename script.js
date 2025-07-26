@@ -4,30 +4,85 @@ let loading = false
 const chatHistory = document.getElementById("chat-history")
 
 function loadMessages() {
-  if (loading) return
-  loading = true
+  if (!chatWith) {
+    console.log("No chat selected")
+    return;
+  }
+
+  if (loading) {
+    console.log("Already loading messages")
+    return;
+  }
+
+  loading = true;
+  console.log(`Loading messages with ${chatWith}, offset: ${messagesOffset}`);
+
+  const chatHistory = document.getElementById("chat-history");
+  const shouldScroll = chatHistory.scrollTop === 0;
 
   fetch(`/messages?with=${chatWith}&offset=${messagesOffset}`, {
     method: "GET",
-    credentials: "include",
+    credentials: "include"
   })
-    .then((res) => res.json())
-    .then((messages) => {
-      messagesOffset += messages.length
+    .then(res => {
+      console.log("Response status:", res.status);
+      console.log("Response headers:", res.headers);
 
-      const oldHeight = chatHistory.scrollHeight
+      if (!res.ok) {
+        // Try to get error message from response
+        return res.text().then(errorText => {
+          throw new Error(`HTTP ${res.status}: ${errorText}`);
+        });
+      }
 
-      messages.forEach((msg) => {
-        const div = document.createElement("div")
-        div.textContent = `${msg.from}: ${msg.content}`
-        chatHistory.prepend(div)
-      })
+      // Check if response is JSON
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        return res.text().then(text => {
+          throw new Error(`Expected JSON but got: ${text}`);
+        });
+      }
 
-      // Restore scroll position
-      chatHistory.scrollTop = chatHistory.scrollHeight - oldHeight
+      return res.json();
+    })
+    .then(messages => {
+      console.log("Received messages:", messages);
+
+      if (!Array.isArray(messages)) {
+        throw new Error("Expected array of messages but got: " + typeof messages);
+      }
+
+      if (messages.length > 0) {
+        messagesOffset += messages.length;
+        const oldHeight = chatHistory.scrollHeight;
+
+        messages.forEach(msg => {
+          const messageEl = createMessageElement(msg);
+          chatHistory.prepend(messageEl); // Prepend to keep scroll position
+        });
+
+        // If we loaded messages by scrolling to the top, restore the view
+        if (shouldScroll) {
+          chatHistory.scrollTop = chatHistory.scrollHeight - oldHeight;
+        }
+      } else {
+        console.log("No more messages to load");
+      }
 
       loading = false;
     })
+    .catch(err => {
+      console.error("Error loading messages:", err);
+      loading = false;
+
+      // Show user-friendly error message
+      const errorDiv = document.createElement("div");
+      errorDiv.style.color = "red";
+      errorDiv.style.padding = "10px";
+      errorDiv.style.textAlign = "center";
+      errorDiv.textContent = "Failed to load messages: " + err.message;
+      chatHistory.appendChild(errorDiv);
+    });
 }
 
 // Scroll Trigger + Throttle
@@ -43,12 +98,48 @@ chatHistory.addEventListener("scroll", function () {
 })
 
 function openChat(userUUID) {
-  chatWith = userUUID
-  messagesOffset = 0
-  chatHistory.innerHTML = ""
-  loadMessages() // Load first 10 messages
-}
+  console.log("Opening chat with user:", userUUID);
 
+  if (!userUUID) {
+    console.error("No userUUID provided to openChat");
+    return;
+  }
+
+  // Highlight active user in the list
+  document.querySelectorAll('.user-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  // Find and highlight the clicked user
+  const clickedUser = Array.from(document.querySelectorAll('.user-item')).find(item => {
+    return item.onclick.toString().includes(userUUID);
+  });
+  if (clickedUser) {
+    clickedUser.classList.add('active');
+  }
+
+  chatWith = userUUID;
+  messagesOffset = 0;
+  loading = false;
+
+  const chatHistory = document.getElementById("chat-history");
+  if (!chatHistory) {
+    console.error("chat-history element not found");
+    return;
+  }
+
+  chatHistory.innerHTML = "";
+
+  // Show loading indicator
+  const loadingDiv = document.createElement("div");
+  loadingDiv.textContent = "Loading messages...";
+  loadingDiv.style.textAlign = "center";
+  loadingDiv.style.color = "#666";
+  loadingDiv.style.padding = "20px";
+  chatHistory.appendChild(loadingDiv);
+
+  loadMessages();
+}
 //----------websocket-----------
 
 let socket

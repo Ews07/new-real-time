@@ -1,3 +1,5 @@
+-- Updated schema.sql - Make sure column names match what we use in code
+
 --Users table
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,13 +72,22 @@ CREATE TABLE IF NOT EXISTS likes_dislikes (
     FOREIGN KEY(user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
 
--- PrivateMessages table
+-- FIXED: PrivateMessages table - using 'sent_at' to match the code
 CREATE TABLE IF NOT EXISTS private_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT UNIQUE NOT NULL,
     sender_uuid TEXT NOT NULL,
     receiver_uuid TEXT NOT NULL,
     content TEXT NOT NULL,
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(sender_uuid) REFERENCES users(uuid) ON DELETE CASCADE,
     FOREIGN KEY(receiver_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
+
+-- for better query performance
+CREATE INDEX IF NOT EXISTS idx_private_messages_conversation 
+ON private_messages(sender_uuid, receiver_uuid, sent_at);
+
+CREATE INDEX IF NOT EXISTS idx_private_messages_sent_at 
+ON private_messages(sent_at);

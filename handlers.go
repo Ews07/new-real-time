@@ -254,6 +254,15 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Fetch user's nickname from DB on connection.
+		var nickname string
+		err := db.QueryRow("SELECT nickname FROM users WHERE uuid = ?", userUUID).Scan(&nickname)
+		if err != nil {
+			log.Printf("Could not find nickname for user %s: %v", userUUID, err)
+			http.Error(w, "User not found", http.StatusInternalServerError)
+			return
+		}
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Println("WebSocket upgrade error:", err)
@@ -267,14 +276,39 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		clients[userUUID] = client
-		onlineUsers[userUUID] = &UserPresence{
-			UserUUID:    userUUID,
-			IsOnline:    true,
-			LastMessage: "",
+
+		// Load user presence data from database (this populates the onlineUsers map with all users)
+		loadUserPresenceFromDB(db, userUUID)
+
+		// Store the user's presence, now including their nickname.
+		// If user already exists in onlineUsers (from loadUserPresenceFromDB), update it
+		// If not, create new entry
+		if existingUser, exists := onlineUsers[userUUID]; exists {
+			existingUser.IsOnline = true
+			existingUser.Nickname = nickname // Make sure nickname is current
+		} else {
+			onlineUsers[userUUID] = &UserPresence{
+				UserUUID:        userUUID,
+				Nickname:        nickname,
+				IsOnline:        true,
+				LastMessage:     "",
+				LastMessageTime: time.Time{}, // Zero time for new users
+			}
 		}
+
+		// Notify all clients about the updated user list
+		sendOnlineUsersToAll()
 
 		go writePump(client)
 		readPump(db, client)
+
+		// On disconnect (after readPump finishes)
+		delete(clients, userUUID)
+		if u, ok := onlineUsers[userUUID]; ok {
+			u.IsOnline = false
+		}
+		// Notify all clients that this user went offline
+		sendOnlineUsersToAll()
 	}
 }
 
@@ -283,22 +317,43 @@ func GetMessagesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userUUID, ok := UserUUIDFromContext(r.Context())
 		if !ok {
+			log.Println("GetMessagesHandler: Unauthorized - no user UUID in context")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		otherUser := r.URL.Query().Get("with")
 		offsetStr := r.URL.Query().Get("offset")
-		offset, _ := strconv.Atoi(offsetStr)
+
+		if otherUser == "" {
+			log.Println("GetMessagesHandler: Missing 'with' parameter")
+			http.Error(w, "Missing 'with' parameter", http.StatusBadRequest)
+			return
+		}
+
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			log.Printf("GetMessagesHandler: Invalid offset '%s', using 0", offsetStr)
+			offset = 0
+		}
+
+		log.Printf("GetMessagesHandler: Loading messages between %s and %s, offset=%d", userUUID, otherUser, offset)
 
 		messages, err := LoadMessages(db, userUUID, otherUser, 10, offset)
 		if err != nil {
-			http.Error(w, "Failed to fetch messages", http.StatusInternalServerError)
+			log.Printf("GetMessagesHandler: LoadMessages error: %v", err)
+			http.Error(w, "Failed to fetch messages: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(messages)
+		if err := json.NewEncoder(w).Encode(messages); err != nil {
+			log.Printf("GetMessagesHandler: JSON encoding error: %v", err)
+			http.Error(w, "Failed to encode messages", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("GetMessagesHandler: Successfully returned %d messages", len(messages))
 	}
 }
 

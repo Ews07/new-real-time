@@ -21,6 +21,26 @@ function showChatUI() {
   resetPostFeed()
   fetchAllUsers()
 }
+function createMessageElement(msg) {
+  const div = document.createElement("div");
+  div.classList.add("message-item");
+
+  // Determine if the message is from the current user or someone else
+  const isSelf = msg.from === currentUserUUID;
+  const author = isSelf ? "You" : msg.from_nickname;
+
+  div.classList.add(isSelf ? "self" : "other");
+
+  // Format the timestamp
+  const time = new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  div.innerHTML = `
+    <div class="message-author">${author}</div>
+    <div class="message-content">${msg.content}</div>
+    <div class="message-time">${time}</div>
+  `;
+  return div;
+}
 
 // On Page Load
 window.addEventListener("DOMContentLoaded", () => {
@@ -152,12 +172,20 @@ function fetchAllUsers() {
   fetch("/users", { credentials: "include" })
     .then(res => res.json())
     .then(users => {
-      allUsers = users
-      console.log(allUsers)
+      allUsers = users.map(user => ({
+        uuid: user.uuid,
+        nickname: user.nickname,
+        isOnline: user.isOnline || false,
+        lastMessage: "",
+        lastMessageTime: null
+      }))
+      console.log("Fetched all users:", allUsers)
       updateUserList()
     })
+    .catch(err => {
+      console.error("Error fetching users:", err)
+    })
 }
-
 
 // Logout
 function logout() {
@@ -214,54 +242,245 @@ function openChat(userUUID) {
 }
 
 function loadMessages() {
-  if (!chatWith) return
+  if (!chatWith) return;
+
+  console.log(`Loading messages with ${chatWith}, offset: ${messagesOffset}`);
+
+  const chatHistory = document.getElementById("chat-history");
+  if (!chatHistory) {
+    console.error("chat-history element not found");
+    return;
+  }
+
+  const shouldScroll = chatHistory.scrollTop === 0;
 
   fetch(`/messages?with=${chatWith}&offset=${messagesOffset}`, {
+    method: "GET",
     credentials: "include"
-  }).then(res => res.json())
-    .then(messages => {
-      messagesOffset += messages.length
-      const chatHistory = document.getElementById("chat-history")
-      messages.forEach(msg => {
-        const div = document.createElement("div")
-        div.textContent = `${msg.from === chatWith ? msg.from : "You"}: ${msg.content}`
-        chatHistory.prepend(div)
-      })
+  })
+    .then(res => {
+      console.log("Response status:", res.status);
+
+      if (!res.ok) {
+        return res.text().then(errorText => {
+          throw new Error(`HTTP ${res.status}: ${errorText}`);
+        });
+      }
+
+      // Check if response is JSON
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        return res.text().then(text => {
+          throw new Error(`Expected JSON but got: ${text}`);
+        });
+      }
+
+      return res.json();
     })
+    .then(messages => {
+      console.log("Received messages:", messages);
+
+      // FIX: Handle null response or ensure it's an array
+      if (!messages) {
+        console.log("No messages returned (null response)");
+        messages = []; // Convert null to empty array
+      }
+
+      if (!Array.isArray(messages)) {
+        console.error("Expected array of messages but got:", typeof messages, messages);
+        messages = []; // Convert non-array to empty array
+      }
+
+      if (messages.length > 0) {
+        messagesOffset += messages.length;
+        const oldHeight = chatHistory.scrollHeight;
+
+        messages.forEach(msg => {
+          const messageEl = createMessageElement(msg);
+          chatHistory.prepend(messageEl); // Prepend to keep scroll position
+        });
+
+        // If we loaded messages by scrolling to the top, restore the view
+        if (shouldScroll) {
+          chatHistory.scrollTop = chatHistory.scrollHeight - oldHeight;
+        }
+      } else {
+        console.log("No messages to load");
+        // Remove any loading indicators
+        const loadingDivs = chatHistory.querySelectorAll('div');
+        loadingDivs.forEach(div => {
+          if (div.textContent.includes('Loading messages...')) {
+            div.remove();
+          }
+        });
+
+        // Show "no messages" indicator if chat is empty
+        if (chatHistory.children.length === 0) {
+          const noMessagesDiv = document.createElement("div");
+          noMessagesDiv.style.textAlign = "center";
+          noMessagesDiv.style.color = "#666";
+          noMessagesDiv.style.padding = "20px";
+          noMessagesDiv.textContent = "No messages yet. Start the conversation!";
+          chatHistory.appendChild(noMessagesDiv);
+        }
+      }
+    })
+    .catch(err => {
+      console.error("Error loading messages:", err);
+
+      // Remove loading indicator and show error
+      const chatHistory = document.getElementById("chat-history");
+      if (chatHistory) {
+        // Remove loading divs
+        const loadingDivs = chatHistory.querySelectorAll('div');
+        loadingDivs.forEach(div => {
+          if (div.textContent.includes('Loading messages...')) {
+            div.remove();
+          }
+        });
+
+        // Show error message
+        const errorDiv = document.createElement("div");
+        errorDiv.style.color = "red";
+        errorDiv.style.padding = "10px";
+        errorDiv.style.textAlign = "center";
+        errorDiv.textContent = "Failed to load messages: " + err.message;
+        chatHistory.appendChild(errorDiv);
+      }
+    });
 }
 
 // Render new incoming message
 function renderIncomingMessage(msg) {
-  if (msg.from !== chatWith && msg.to !== chatWith) return
-  const div = document.createElement("div")
-  div.textContent = `${msg.from === chatWith ? msg.from : "You"}: ${msg.content}`
-  document.getElementById("chat-history").appendChild(div)
+  // Only render if the message is for the currently active chat
+  if (msg.from !== chatWith && msg.to !== chatWith) {
+    // Optional: Add a notification for other chats here
+    return;
+  }
+
+  const chatHistory = document.getElementById("chat-history");
+  const messageEl = createMessageElement(msg);
+
+  // Check if user is near the bottom of the chat before appending
+  const isScrolledToBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 1;
+
+  chatHistory.appendChild(messageEl);
+
+  // Auto-scroll only if the user was already at the bottom
+  if (isScrolledToBottom) {
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
 }
 
 // Update online status and re-render
-function renderOnlineUsers(onlineList) {
-  allUsers.forEach(user => {
-    user.isOnline = onlineList.some(u => u.UserUUID === user.uuid && u.IsOnline)
+function renderOnlineUsers(users) {
+  console.log("Received user list from WebSocket:", users)
+
+  // Update our local allUsers array with the new data
+  users.forEach(wsUser => {
+    // Find existing user in allUsers array
+    const existingUserIndex = allUsers.findIndex(u => u.uuid === wsUser.user_uuid)
+
+    if (existingUserIndex !== -1) {
+      // Update existing user
+      allUsers[existingUserIndex].isOnline = wsUser.is_online
+      allUsers[existingUserIndex].lastMessage = wsUser.last_message
+      allUsers[existingUserIndex].lastMessageTime = wsUser.last_message_time
+    } else {
+      // Add new user if not found
+      allUsers.push({
+        uuid: wsUser.user_uuid,
+        nickname: wsUser.nickname,
+        isOnline: wsUser.is_online,
+        lastMessage: wsUser.last_message,
+        lastMessageTime: wsUser.last_message_time
+      })
+    }
   })
+
+  // Re-render the user list
   updateUserList()
 }
 
 // Render all users in the user list
+// Render all users in the user list with proper sorting
 function updateUserList() {
-  const list = document.getElementById("all-users") // Match your HTML
+  const list = document.getElementById("all-users")
   if (!list) {
-    console.error("user-list element not found")
+    console.error("all-users element not found")
     return
   }
+
   list.innerHTML = ""
 
-  allUsers.forEach(user => {
-    if (user.uuid === currentUserUUID) return // skip self
+  // Filter out current user and sort the list
+  const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID)
+
+  // Sort users the same way as backend:
+  // 1. Users with messages first (sorted by most recent message time)
+  // 2. Users without messages second (sorted alphabetically by nickname)
+  otherUsers.sort((a, b) => {
+    const aHasMessage = a.lastMessage && a.lastMessageTime
+    const bHasMessage = b.lastMessage && b.lastMessageTime
+
+    // Both have messages - sort by most recent message time (newest first)
+    if (aHasMessage && bHasMessage) {
+      const timeA = new Date(a.lastMessageTime)
+      const timeB = new Date(b.lastMessageTime)
+      return timeB - timeA // Descending order (newest first)
+    }
+
+    // Only a has messages - a comes first
+    if (aHasMessage && !bHasMessage) {
+      return -1
+    }
+
+    // Only b has messages - b comes first  
+    if (!aHasMessage && bHasMessage) {
+      return 1
+    }
+
+    // Neither has messages - sort alphabetically by nickname
+    return a.nickname.localeCompare(b.nickname)
+  })
+
+  otherUsers.forEach(user => {
     const li = document.createElement("li")
-    li.innerHTML = `<span class="status">${user.isOnline ? "🟢" : "⚪"}</span> ${user.nickname}`
+    li.classList.add("user-item")
+
+    // Create status indicator
+    const statusSpan = document.createElement("span")
+    statusSpan.classList.add("status")
+    statusSpan.textContent = user.isOnline ? "🟢" : "⚪"
+
+    // Create nickname span
+    const nicknameSpan = document.createElement("span")
+    nicknameSpan.classList.add("nickname")
+    nicknameSpan.textContent = user.nickname
+
+    // Create last message preview (if exists)
+    const previewSpan = document.createElement("span")
+    previewSpan.classList.add("message-preview")
+    if (user.lastMessage) {
+      const preview = user.lastMessage.length > 30
+        ? user.lastMessage.substring(0, 30) + "..."
+        : user.lastMessage
+      previewSpan.textContent = preview
+    }
+
+    // Assemble the list item
+    li.appendChild(statusSpan)
+    li.appendChild(nicknameSpan)
+    if (user.lastMessage) {
+      li.appendChild(document.createElement("br"))
+      li.appendChild(previewSpan)
+    }
+
     li.onclick = () => openChat(user.uuid)
     list.appendChild(li)
   })
+
+  console.log("Updated user list with", otherUsers.length, "users")
 }
 
 
@@ -272,15 +491,15 @@ function loadPostFeed() {
     .then(res => res.json())
     .then(posts => {
       const feed = document.getElementById("post-feed")
-      console.log("postssss",posts)
+      console.log("postssss", posts)
       posts.forEach(p => {
         const div = document.createElement("div")
         div.className = "post-item"
         div.innerHTML = `<strong>${p.title}</strong><br>by ${p.nickname}<br><small>${new Date(p.created_at).toLocaleString()}</small>`
         div.onclick = () => openPostView(p.uuid)
         feed.appendChild(div)
-        console.log("feed",feed);
-        
+        console.log("feed", feed);
+
       })
 
       // Hide "Load More" if no more posts
@@ -395,7 +614,7 @@ function submitPost() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, content, categories }),
   })
-  // console.log(title, content, categories)
+    // console.log(title, content, categories)
 
     .then(res => {
       if (!res.ok) throw new Error("Post failed")

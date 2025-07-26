@@ -198,3 +198,171 @@ button:hover {
   margin-right: 8px;
   font-size: 14px;
 }
+
+/* In static/styles.css */
+
+.message-item {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  position: relative;
+}
+
+.message-item.self {
+  background-color: #0077ff;
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.message-item.other {
+  background-color: #e5e5ea;
+  color: black;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.message-author {
+  font-weight: bold;
+  font-size: 0.9em;
+  margin-bottom: 4px;
+  color: #a0a0a0;
+}
+
+.message-item.self .message-author {
+  color: #d0eaff;
+}
+
+.message-content {
+  word-wrap: break-word;
+}
+
+.message-time {
+  font-size: 0.75em;
+  color: #a0a0a0;
+  margin-top: 5px;
+  align-self: flex-end;
+}
+
+.message-item.self .message-time {
+  color: #d0eaff;
+}
+
+/* Make chat history a flex container */
+#chat-history {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Add this to your styles.css - replace the existing user list styles */
+
+/* User Column (Left Sidebar) */
+#user-column {
+  width: 250px;
+  border-right: 1px solid #ddd;
+  padding-right: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+#user-column h3 {
+  margin: 10px 0 5px 0;
+  font-size: 18px;
+  color: #333;
+  font-weight: 600;
+}
+
+#all-users {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.user-item {
+  padding: 12px 10px;
+  background-color: #ffffff;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #e9ecef;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.user-item:hover {
+  background-color: #e3f2fd;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.user-item .status {
+  margin-right: 8px;
+  font-size: 12px;
+}
+
+.user-item .nickname {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+}
+
+.user-item .message-preview {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+  margin-top: 4px;
+  display: block;
+  line-height: 1.3;
+}
+
+/* Active chat user highlighting */
+.user-item.active {
+  background-color: #0077ff;
+  color: white;
+  border-color: #0056b3;
+}
+
+.user-item.active .nickname {
+  color: white;
+}
+
+.user-item.active .message-preview {
+  color: #e6f3ff;
+}
+
+/* Online/Offline status indicators */
+.user-item .status {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+/* Scrollbar styling for user list */
+#all-users::-webkit-scrollbar {
+  width: 6px;
+}
+
+#all-users::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+#all-users::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+#all-users::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

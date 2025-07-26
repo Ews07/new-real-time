@@ -13,6 +13,14 @@ import (
 
 var ErrUserExists = errors.New("user already exists")
 
+type MessageWithAuthor struct {
+	From         string `json:"from"`
+	To           string `json:"to"`
+	Content      string `json:"content"`
+	SentAt       string `json:"sent_at"`
+	FromNickname string `json:"from_nickname"`
+}
+
 func InitDB(dbFile string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dbFile)
 	if err != nil {
@@ -163,34 +171,52 @@ func InsertPostCategories(db *sql.DB, postUUID string, categories []string) erro
 
 func SaveMessage(db *sql.DB, uuid, sender, receiver, content string, createdAt time.Time) error {
 	stmt := `
-        INSERT INTO messages (uuid, sender_uuid, receiver_uuid, content, created_at)
+        INSERT INTO private_messages (uuid, sender_uuid, receiver_uuid, content, created_at)
         VALUES (?, ?, ?, ?, ?)`
 	_, err := db.Exec(stmt, uuid, sender, receiver, content, createdAt)
 	return err
 }
 
-func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]Message, error) {
+func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]MessageWithAuthor, error) {
+	// Fixed SQL query - using correct column names from schema
 	stmt := `
-        SELECT sender_uuid, receiver_uuid, content, created_at
-        FROM messages
-        WHERE (sender_uuid = ? AND receiver_uuid = ?)
-           OR (sender_uuid = ? AND receiver_uuid = ?)
-        ORDER BY created_at DESC
+        SELECT m.sender_uuid, m.receiver_uuid, m.content, m.sent_at, u.nickname
+        FROM private_messages m
+        JOIN users u ON m.sender_uuid = u.uuid
+        WHERE (m.sender_uuid = ? AND m.receiver_uuid = ?)
+           OR (m.sender_uuid = ? AND m.receiver_uuid = ?)
+        ORDER BY m.sent_at DESC
         LIMIT ? OFFSET ?`
+
+	log.Printf("LoadMessages query: userA=%s, userB=%s, limit=%d, offset=%d", userA, userB, limit, offset)
 
 	rows, err := db.Query(stmt, userA, userB, userB, userA, limit, offset)
 	if err != nil {
-		return nil, err
+		log.Printf("LoadMessages query error: %v", err)
+		return []MessageWithAuthor{}, err // Return empty slice instead of nil
 	}
 	defer rows.Close()
 
-	var messages []Message
+	// Initialize as empty slice instead of nil slice
+	messages := make([]MessageWithAuthor, 0)
+
 	for rows.Next() {
-		var m Message
-		var createdAt time.Time
-		rows.Scan(&m.From, &m.To, &m.Content, &createdAt)
-		m.SentAt = createdAt.Format(time.RFC3339)
+		var m MessageWithAuthor
+		var sentAt time.Time
+
+		// Scan the fields - using correct field names
+		if err := rows.Scan(&m.From, &m.To, &m.Content, &sentAt, &m.FromNickname); err != nil {
+			log.Printf("Error scanning message: %v", err)
+			continue
+		}
+		m.SentAt = sentAt.Format(time.RFC3339)
 		messages = append(messages, m)
+	}
+
+	// Check for errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("LoadMessages rows iteration error: %v", err)
+		return []MessageWithAuthor{}, err // Return empty slice instead of nil
 	}
 
 	// Reverse to return oldest-to-newest
@@ -198,6 +224,7 @@ func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]Message
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 
+	log.Printf("LoadMessages returning %d messages", len(messages))
 	return messages, nil
 }
 
