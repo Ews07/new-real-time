@@ -171,12 +171,16 @@ func InsertPostCategories(db *sql.DB, postUUID string, categories []string) erro
 
 func SaveMessage(db *sql.DB, uuid, sender, receiver, content string, createdAt time.Time) error {
 	stmt := `
-        INSERT INTO private_messages (uuid, sender_uuid, receiver_uuid, content, created_at)
-        VALUES (?, ?, ?, ?, ?)`
-	_, err := db.Exec(stmt, uuid, sender, receiver, content, createdAt)
+        INSERT INTO private_messages (uuid, sender_uuid, receiver_uuid, content, created_at, sent_at)
+        VALUES (?, ?, ?, ?, ?, ?)`
+	_, err := db.Exec(stmt, uuid, sender, receiver, content, createdAt, createdAt)
+	if err != nil {
+		log.Printf("SaveMessage error: %v", err)
+	} else {
+		log.Printf("SaveMessage success: %s -> %s: %s (UUID: %s)", sender, receiver, content, uuid)
+	}
 	return err
 }
-
 func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]MessageWithAuthor, error) {
 	// Fixed SQL query - using correct column names from schema
 	stmt := `

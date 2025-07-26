@@ -20,7 +20,33 @@ function showChatUI() {
   document.getElementById("chat-section").style.display = "block"
   resetPostFeed()
   fetchAllUsers()
+
+  // Initialize chat input handlers
+  initializeChatInput()
+
+  // Set up scroll event for loading more messages
+  setupChatScrollHandler()
 }
+function setupChatScrollHandler() {
+  const chatHistory = document.getElementById("chat-history");
+  if (!chatHistory) {
+    console.error("chat-history element not found for scroll handler");
+    return;
+  }
+
+  let debounceTimer;
+
+  chatHistory.addEventListener("scroll", function () {
+    if (chatHistory.scrollTop === 0 && chatWith) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log("Loading more messages due to scroll");
+        loadMessages();
+      }, 300); // 300ms debounce
+    }
+  });
+}
+
 function createMessageElement(msg) {
   const div = document.createElement("div");
   div.classList.add("message-item");
@@ -44,7 +70,9 @@ function createMessageElement(msg) {
 
 // On Page Load
 window.addEventListener("DOMContentLoaded", () => {
-  // Check session
+  console.log("DOM loaded, initializing application...");
+
+  // Check session first
   fetch("/me", {
     method: "GET",
     credentials: "include"
@@ -54,25 +82,33 @@ window.addEventListener("DOMContentLoaded", () => {
       return res.json()
     })
     .then(data => {
+      console.log("User authenticated:", data);
       currentUserUUID = data.user_uuid
       showChatUI()
       connectWebSocket()
     })
-    .catch(() => {
+    .catch((error) => {
+      console.log("User not authenticated:", error);
       showLoginUI()
     })
 
   // Login form submit
-  document.getElementById("login-form").addEventListener("submit", function (e) {
-    e.preventDefault()
-    login()
-  })
+  const loginForm = document.getElementById("login-form");
+  if (loginForm) {
+    loginForm.addEventListener("submit", function (e) {
+      e.preventDefault()
+      login()
+    })
+  }
 
-  // Register form submit
-  document.getElementById("register-form").addEventListener("submit", function (e) {
-    e.preventDefault()
-    register()
-  })
+  // Register form submit  
+  const registerForm = document.getElementById("register-form");
+  if (registerForm) {
+    registerForm.addEventListener("submit", function (e) {
+      e.preventDefault()
+      register()
+    })
+  }
 
   // Toggle between login/register
   const loginSection = document.getElementById("login-section")
@@ -80,25 +116,67 @@ window.addEventListener("DOMContentLoaded", () => {
   const showRegisterBtn = document.getElementById("show-register")
   const showLoginBtn = document.getElementById("show-login")
 
-  showRegisterBtn.addEventListener("click", () => {
-    loginSection.style.display = "none"
-    registerSection.style.display = "block"
-  })
+  if (showRegisterBtn) {
+    showRegisterBtn.addEventListener("click", () => {
+      loginSection.style.display = "none"
+      registerSection.style.display = "block"
+    })
+  }
 
-  showLoginBtn.addEventListener("click", () => {
-    loginSection.style.display = "block"
-    registerSection.style.display = "none"
-  })
+  if (showLoginBtn) {
+    showLoginBtn.addEventListener("click", () => {
+      loginSection.style.display = "block"
+      registerSection.style.display = "none"
+    })
+  }
 
-  document.getElementById("logout-btn").addEventListener("click", logout)
+  // Logout button
+  const logoutBtn = document.getElementById("logout-btn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", logout)
+  }
 
-  document.getElementById("create-post-btn").addEventListener("click", () => {
-    const form = document.getElementById("post-form")
-    // if (form) {
-    form.style.display = form.style.display === "none" ? "block" : "none"
-    // }
-  })
-  document.getElementById("submit-post").addEventListener("click", submitPost)
+  // Create post button
+  const createPostBtn = document.getElementById("create-post-btn");
+  if (createPostBtn) {
+    createPostBtn.addEventListener("click", () => {
+      const form = document.getElementById("post-form")
+      if (form) {
+        form.style.display = form.style.display === "none" ? "block" : "none"
+      }
+    })
+  }
+
+  // Submit post button
+  const submitPostBtn = document.getElementById("submit-post");
+  if (submitPostBtn) {
+    submitPostBtn.addEventListener("click", submitPost)
+  }
+
+  // Submit comment button
+  const submitCommentBtn = document.getElementById("submit-comment");
+  if (submitCommentBtn) {
+    submitCommentBtn.addEventListener("click", () => {
+      const content = document.getElementById("comment-text").value.trim()
+      if (!content || !currentPostUUID) return alert("Cannot post empty comment")
+
+      fetch("/comment", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post_uuid: currentPostUUID, content })
+      }).then(res => {
+        if (res.ok) {
+          document.getElementById("comment-text").value = ""
+          openPostView(currentPostUUID) // reload comments
+        } else {
+          res.text().then(alert)
+        }
+      })
+    })
+  }
+
+  console.log("Application initialization complete");
 })
 
 // Login Logic
@@ -200,24 +278,41 @@ function logout() {
 
 // WebSocket
 function connectWebSocket() {
+  console.log("Attempting to connect WebSocket...");
   socket = new WebSocket("ws://localhost:8080/ws")
 
   socket.onopen = () => {
-    console.log("WebSocket connected")
+    console.log("WebSocket connected successfully")
   }
 
   socket.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    if (data.type === "user_list") {
-      renderOnlineUsers(data.users)
-    } else {
-      renderIncomingMessage(data)
+    console.log("WebSocket message received:", event.data);
+
+    try {
+      const data = JSON.parse(event.data)
+      console.log("Parsed WebSocket data:", data);
+
+      if (data.type === "user_list") {
+        console.log("Received user list update");
+        renderOnlineUsers(data.users)
+      } else {
+        console.log("Received chat message");
+        // This is a chat message
+        renderIncomingMessage(data)
+      }
+    } catch (error) {
+      console.error("Error parsing WebSocket message:", error);
     }
   }
 
-  socket.onclose = () => {
-    console.log("Socket closed, retrying...")
-    setTimeout(connectWebSocket, 2000)
+  socket.onerror = (error) => {
+    console.error("WebSocket error:", error);
+  }
+
+  socket.onclose = (event) => {
+    console.log("WebSocket closed. Code:", event.code, "Reason:", event.reason);
+    console.log("Attempting to reconnect in 2 seconds...");
+    setTimeout(connectWebSocket, 2000);
   }
 }
 
@@ -234,11 +329,51 @@ document.getElementById("chat-input").addEventListener("keydown", function (e) {
 
 // Load Chat History
 function openChat(userUUID) {
-  chatWith = userUUID
-  messagesOffset = 0
-  const chatHistory = document.getElementById("chat-history")
-  chatHistory.innerHTML = ""
-  loadMessages()
+  console.log("Opening chat with user:", userUUID);
+
+  if (!userUUID) {
+    console.error("No userUUID provided to openChat");
+    return;
+  }
+
+  // Highlight active user in the list
+  document.querySelectorAll('.user-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  // Find and highlight the clicked user
+  const userItems = document.querySelectorAll('.user-item');
+  userItems.forEach(item => {
+    // Check if this item's onclick contains the userUUID
+    if (item.onclick && item.onclick.toString().includes(userUUID)) {
+      item.classList.add('active');
+    }
+  });
+
+  // Set the chat target
+  chatWith = userUUID;
+  messagesOffset = 0;
+
+  const chatHistory = document.getElementById("chat-history");
+  if (!chatHistory) {
+    console.error("chat-history element not found");
+    return;
+  }
+
+  // Clear chat history
+  chatHistory.innerHTML = "";
+
+  // Show loading indicator
+  const loadingDiv = document.createElement("div");
+  loadingDiv.textContent = "Loading messages...";
+  loadingDiv.style.textAlign = "center";
+  loadingDiv.style.color = "#666";
+  loadingDiv.style.padding = "20px";
+  loadingDiv.classList.add('loading-indicator'); // Add class for easy removal
+  chatHistory.appendChild(loadingDiv);
+
+  // Load messages
+  loadMessages();
 }
 
 function loadMessages() {
@@ -267,7 +402,6 @@ function loadMessages() {
         });
       }
 
-      // Check if response is JSON
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         return res.text().then(text => {
@@ -280,16 +414,20 @@ function loadMessages() {
     .then(messages => {
       console.log("Received messages:", messages);
 
-      // FIX: Handle null response or ensure it's an array
+      // Handle null response or ensure it's an array
       if (!messages) {
         console.log("No messages returned (null response)");
-        messages = []; // Convert null to empty array
+        messages = [];
       }
 
       if (!Array.isArray(messages)) {
         console.error("Expected array of messages but got:", typeof messages, messages);
-        messages = []; // Convert non-array to empty array
+        messages = [];
       }
+
+      // Remove loading indicator
+      const loadingIndicators = chatHistory.querySelectorAll('.loading-indicator');
+      loadingIndicators.forEach(indicator => indicator.remove());
 
       if (messages.length > 0) {
         messagesOffset += messages.length;
@@ -297,7 +435,7 @@ function loadMessages() {
 
         messages.forEach(msg => {
           const messageEl = createMessageElement(msg);
-          chatHistory.prepend(messageEl); // Prepend to keep scroll position
+          chatHistory.prepend(messageEl);
         });
 
         // If we loaded messages by scrolling to the top, restore the view
@@ -306,16 +444,9 @@ function loadMessages() {
         }
       } else {
         console.log("No messages to load");
-        // Remove any loading indicators
-        const loadingDivs = chatHistory.querySelectorAll('div');
-        loadingDivs.forEach(div => {
-          if (div.textContent.includes('Loading messages...')) {
-            div.remove();
-          }
-        });
 
-        // Show "no messages" indicator if chat is empty
-        if (chatHistory.children.length === 0) {
+        // Show "no messages" indicator if chat is empty and this is the first load
+        if (chatHistory.children.length === 0 && messagesOffset === 0) {
           const noMessagesDiv = document.createElement("div");
           noMessagesDiv.style.textAlign = "center";
           noMessagesDiv.style.color = "#666";
@@ -328,79 +459,110 @@ function loadMessages() {
     .catch(err => {
       console.error("Error loading messages:", err);
 
-      // Remove loading indicator and show error
-      const chatHistory = document.getElementById("chat-history");
-      if (chatHistory) {
-        // Remove loading divs
-        const loadingDivs = chatHistory.querySelectorAll('div');
-        loadingDivs.forEach(div => {
-          if (div.textContent.includes('Loading messages...')) {
-            div.remove();
-          }
-        });
+      // Remove loading indicator
+      const loadingIndicators = chatHistory.querySelectorAll('.loading-indicator');
+      loadingIndicators.forEach(indicator => indicator.remove());
 
-        // Show error message
-        const errorDiv = document.createElement("div");
-        errorDiv.style.color = "red";
-        errorDiv.style.padding = "10px";
-        errorDiv.style.textAlign = "center";
-        errorDiv.textContent = "Failed to load messages: " + err.message;
-        chatHistory.appendChild(errorDiv);
-      }
+      // Show error message
+      const errorDiv = document.createElement("div");
+      errorDiv.style.color = "red";
+      errorDiv.style.padding = "10px";
+      errorDiv.style.textAlign = "center";
+      errorDiv.textContent = "Failed to load messages: " + err.message;
+      chatHistory.appendChild(errorDiv);
     });
 }
-
 // Render new incoming message
 function renderIncomingMessage(msg) {
-  // Only render if the message is for the currently active chat
-  if (msg.from !== chatWith && msg.to !== chatWith) {
-    // Optional: Add a notification for other chats here
-    return;
+  console.log("Received message:", msg);
+  console.log("Current chat with:", chatWith);
+  console.log("Message from:", msg.from, "Message to:", msg.to);
+  console.log("Current user UUID:", currentUserUUID);
+
+  // Determine if this message is relevant to the currently open chat
+  const isRelevantToCurrentChat =
+    (msg.from === chatWith && msg.to === currentUserUUID) || // Message from the person I'm chatting with
+    (msg.from === currentUserUUID && msg.to === chatWith);   // Message I sent to the person I'm chatting with
+
+  // If we have a chat open and this message is relevant, show it
+  if (chatWith && isRelevantToCurrentChat) {
+    const chatHistory = document.getElementById("chat-history");
+    if (!chatHistory) {
+      console.error("chat-history element not found");
+      return;
+    }
+
+    // Remove "no messages" placeholder if it exists
+    const noMessagesDiv = chatHistory.querySelector('div');
+    if (noMessagesDiv && noMessagesDiv.textContent.includes('No messages yet')) {
+      noMessagesDiv.remove();
+    }
+
+    const messageEl = createMessageElement(msg);
+
+    // Check if user is near the bottom of the chat before appending
+    const isScrolledToBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 1;
+
+    chatHistory.appendChild(messageEl);
+
+    // Auto-scroll only if the user was already at the bottom
+    if (isScrolledToBottom) {
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    console.log("Message displayed in current chat");
+  } else {
+    console.log("Message not displayed - either no active chat or message not relevant to current chat");
+
+    // Optional: Show notification for messages from other chats
+    if (msg.from !== currentUserUUID && (!chatWith || msg.from !== chatWith)) {
+      showMessageNotification(msg);
+    }
   }
+}
+function showMessageNotification(msg) {
+  // Simple notification - you can make this more sophisticated
+  console.log(`New message from ${msg.from_nickname}: ${msg.content}`);
 
-  const chatHistory = document.getElementById("chat-history");
-  const messageEl = createMessageElement(msg);
-
-  // Check if user is near the bottom of the chat before appending
-  const isScrolledToBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 1;
-
-  chatHistory.appendChild(messageEl);
-
-  // Auto-scroll only if the user was already at the bottom
-  if (isScrolledToBottom) {
-    chatHistory.scrollTop = chatHistory.scrollHeight;
-  }
+  // You could add a visual notification here, like:
+  // - A badge next to the user's name
+  // - A toast notification
+  // - Sound notification
+  // For now, just console log
 }
 
 // Update online status and re-render
 function renderOnlineUsers(users) {
-  console.log("Received user list from WebSocket:", users)
+  console.log("Rendering online users:", users)
 
   // Update our local allUsers array with the new data
   users.forEach(wsUser => {
-    // Find existing user in allUsers array
     const existingUserIndex = allUsers.findIndex(u => u.uuid === wsUser.user_uuid)
 
     if (existingUserIndex !== -1) {
       // Update existing user
       allUsers[existingUserIndex].isOnline = wsUser.is_online
-      allUsers[existingUserIndex].lastMessage = wsUser.last_message
+      allUsers[existingUserIndex].lastMessage = wsUser.last_message || ""
       allUsers[existingUserIndex].lastMessageTime = wsUser.last_message_time
+      console.log(`Updated user ${wsUser.nickname}:`, allUsers[existingUserIndex]);
     } else {
       // Add new user if not found
-      allUsers.push({
+      const newUser = {
         uuid: wsUser.user_uuid,
         nickname: wsUser.nickname,
         isOnline: wsUser.is_online,
-        lastMessage: wsUser.last_message,
+        lastMessage: wsUser.last_message || "",
         lastMessageTime: wsUser.last_message_time
-      })
+      };
+      allUsers.push(newUser);
+      console.log(`Added new user ${wsUser.nickname}:`, newUser);
     }
   })
 
   // Re-render the user list
   updateUserList()
 }
+
 
 // Render all users in the user list
 // Render all users in the user list with proper sorting
@@ -415,38 +577,36 @@ function updateUserList() {
 
   // Filter out current user and sort the list
   const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID)
+  console.log("Other users to display:", otherUsers);
 
-  // Sort users the same way as backend:
-  // 1. Users with messages first (sorted by most recent message time)
-  // 2. Users without messages second (sorted alphabetically by nickname)
+  // Sort users the same way as backend
   otherUsers.sort((a, b) => {
     const aHasMessage = a.lastMessage && a.lastMessageTime
     const bHasMessage = b.lastMessage && b.lastMessageTime
 
-    // Both have messages - sort by most recent message time (newest first)
     if (aHasMessage && bHasMessage) {
       const timeA = new Date(a.lastMessageTime)
       const timeB = new Date(b.lastMessageTime)
-      return timeB - timeA // Descending order (newest first)
+      return timeB - timeA
     }
 
-    // Only a has messages - a comes first
     if (aHasMessage && !bHasMessage) {
       return -1
     }
 
-    // Only b has messages - b comes first  
     if (!aHasMessage && bHasMessage) {
       return 1
     }
 
-    // Neither has messages - sort alphabetically by nickname
     return a.nickname.localeCompare(b.nickname)
   })
 
   otherUsers.forEach(user => {
     const li = document.createElement("li")
     li.classList.add("user-item")
+
+    // Store user UUID as data attribute for easy access
+    li.dataset.userUuid = user.uuid;
 
     // Create status indicator
     const statusSpan = document.createElement("span")
@@ -476,11 +636,73 @@ function updateUserList() {
       li.appendChild(previewSpan)
     }
 
-    li.onclick = () => openChat(user.uuid)
+    // Add click handler
+    li.onclick = () => {
+      console.log("User clicked:", user.nickname, user.uuid);
+      openChat(user.uuid);
+    }
+
+    // Highlight if this is the currently active chat
+    if (user.uuid === chatWith) {
+      li.classList.add('active');
+    }
+
     list.appendChild(li)
   })
 
   console.log("Updated user list with", otherUsers.length, "users")
+}
+function setupMessageInput() {
+  const chatInput = document.getElementById("chat-input");
+  if (!chatInput) {
+    console.error("chat-input element not found");
+    return;
+  }
+
+  chatInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault(); // Prevent form submission if inside a form
+
+      const content = chatInput.value.trim()
+      if (!content) {
+        console.log("Empty message, not sending");
+        return;
+      }
+
+      if (!chatWith) {
+        console.log("No chat target selected");
+        alert("Please select a user to chat with first");
+        return;
+      }
+
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        console.error("WebSocket is not connected");
+        alert("Connection lost. Please refresh the page.");
+        return;
+      }
+
+      const msg = {
+        to: chatWith,
+        content: content,
+      }
+
+      console.log("Sending message:", msg);
+
+      try {
+        socket.send(JSON.stringify(msg))
+        chatInput.value = ""
+        console.log("Message sent successfully");
+      } catch (error) {
+        console.error("Error sending message:", error);
+        alert("Failed to send message. Please try again.");
+      }
+    }
+  })
+}
+
+// Call this function when the chat UI is shown
+function initializeChatInput() {
+  setupMessageInput();
 }
 
 

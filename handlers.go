@@ -272,7 +272,7 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 		client := &Client{
 			Conn:     conn,
 			UserUUID: userUUID,
-			Send:     make(chan []byte),
+			Send:     make(chan []byte, 256),
 		}
 
 		clients[userUUID] = client

@@ -110,7 +110,7 @@ func sendOnlineUsersToAll() {
 		users = append(users, *u)
 	}
 
-	// Sort users: 
+	// Sort users:
 	// 1. Users with messages first (sorted by most recent message time)
 	// 2. Users without messages second (sorted alphabetically by nickname)
 	sort.Slice(users, func(i, j int) bool {
@@ -168,15 +168,15 @@ func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.T
            OR (sender_uuid = ? AND receiver_uuid = ?)
         ORDER BY created_at DESC 
         LIMIT 1`
-	
+
 	var content string
 	var createdAt time.Time
-	
+
 	err := db.QueryRow(query, userA, userB, userB, userA).Scan(&content, &createdAt)
 	if err != nil {
 		return "", time.Time{} // No messages found
 	}
-	
+
 	return content, createdAt
 }
 
@@ -237,12 +237,20 @@ func readPump(db *sql.DB, client *Client) {
 		msg.From = client.UserUUID
 		msg.SentAt = time.Now().Format(time.RFC3339)
 
-		SaveMessage(db, uuid.New().String(), msg.From, msg.To, msg.Content, time.Now())
+		log.Printf("Received message: From=%s, To=%s, Content=%s", msg.From, msg.To, msg.Content)
 
+		// Save to database
+		err = SaveMessage(db, uuid.New().String(), msg.From, msg.To, msg.Content, time.Now())
+		if err != nil {
+			log.Printf("Failed to save message: %v", err)
+		} else {
+			log.Printf("Message saved successfully")
+		}
+
+		// Send to broadcast channel
 		broadcast <- msg
 	}
 }
-
 func writePump(client *Client) {
 	for {
 		msg, ok := <-client.Send
