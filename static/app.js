@@ -375,7 +375,6 @@ function openChat(userUUID) {
   // Load messages
   loadMessages();
 }
-
 function loadMessages() {
   if (!chatWith) return;
 
@@ -388,6 +387,7 @@ function loadMessages() {
   }
 
   const shouldScroll = chatHistory.scrollTop === 0;
+  const isFirstLoad = messagesOffset === 0;
 
   fetch(`/messages?with=${chatWith}&offset=${messagesOffset}`, {
     method: "GET",
@@ -431,15 +431,27 @@ function loadMessages() {
 
       if (messages.length > 0) {
         messagesOffset += messages.length;
-        const oldHeight = chatHistory.scrollHeight;
 
-        messages.forEach(msg => {
-          const messageEl = createMessageElement(msg);
-          chatHistory.prepend(messageEl);
-        });
+        if (isFirstLoad) {
+          // First load: append messages in the order they come (oldest to newest)
+          messages.forEach(msg => {
+            const messageEl = createMessageElement(msg);
+            chatHistory.appendChild(messageEl);
+          });
 
-        // If we loaded messages by scrolling to the top, restore the view
-        if (shouldScroll) {
+          // Scroll to bottom for first load
+          chatHistory.scrollTop = chatHistory.scrollHeight;
+        } else {
+          // Pagination load: prepend messages to top (but reverse them first since they come newest-first from DB)
+          const oldHeight = chatHistory.scrollHeight;
+
+          // Reverse the messages array since DB gives us newest-first but we want to prepend oldest-first
+          messages.reverse().forEach(msg => {
+            const messageEl = createMessageElement(msg);
+            chatHistory.prepend(messageEl);
+          });
+
+          // Restore scroll position
           chatHistory.scrollTop = chatHistory.scrollHeight - oldHeight;
         }
       } else {

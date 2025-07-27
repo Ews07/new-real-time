@@ -223,11 +223,6 @@ func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]Message
 		return []MessageWithAuthor{}, err // Return empty slice instead of nil
 	}
 
-	// Reverse to return oldest-to-newest
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-
 	log.Printf("LoadMessages returning %d messages", len(messages))
 	return messages, nil
 }
