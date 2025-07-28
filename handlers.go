@@ -277,26 +277,58 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 
 		clients[userUUID] = client
 
-		// Load user presence data from database (this populates the onlineUsers map with all users)
-		loadUserPresenceFromDB(db, userUUID)
+		log.Printf("User %s (%s) connecting via WebSocket", userUUID, nickname)
 
-		// Store the user's presence, now including their nickname.
-		// If user already exists in onlineUsers (from loadUserPresenceFromDB), update it
-		// If not, create new entry
+		// STEP 1: First, establish this user's presence with their current info
+		// Get their last message data from database for their own profile
+		var currentUserLastMsg string
+		var currentUserLastTime time.Time
+
+		// Find the most recent message this user has sent to anyone
+		row := db.QueryRow(`
+    SELECT content, sent_at 
+    FROM private_messages 
+    WHERE sender_uuid = ? 
+    ORDER BY sent_at DESC 
+    LIMIT 1`, userUUID)
+
+		err = row.Scan(&currentUserLastMsg, &currentUserLastTime)
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("Error getting user's last message: %v", err)
+		}
+		if err == sql.ErrNoRows {
+			// User has never sent a message
+			currentUserLastMsg = ""
+			currentUserLastTime = time.Time{}
+		}
+
+		// Add/update this user's presence with their correct data
 		if existingUser, exists := onlineUsers[userUUID]; exists {
+			log.Printf("Updating existing user %s to online", nickname)
 			existingUser.IsOnline = true
-			existingUser.Nickname = nickname // Make sure nickname is current
+			existingUser.Nickname = nickname
+			// Keep their existing LastMessage data or update if we found something more recent
+			if !currentUserLastTime.IsZero() && currentUserLastTime.After(existingUser.LastMessageTime) {
+				existingUser.LastMessage = currentUserLastMsg
+				existingUser.LastMessageTime = currentUserLastTime
+			}
 		} else {
+			log.Printf("Creating new presence entry for user %s", nickname)
 			onlineUsers[userUUID] = &UserPresence{
 				UserUUID:        userUUID,
 				Nickname:        nickname,
 				IsOnline:        true,
-				LastMessage:     "",
-				LastMessageTime: time.Time{}, // Zero time for new users
+				LastMessage:     currentUserLastMsg,
+				LastMessageTime: currentUserLastTime,
 			}
 		}
 
-		// Notify all clients about the updated user list
+		// STEP 2: Then load all other users' presence data
+		// This will not affect the current user since loadUserPresenceFromDB
+		// only processes users WHERE uuid != userUUID
+		loadUserPresenceFromDB(db, userUUID)
+		log.Printf("User %s presence established, loading other users completed", nickname)
+
 		sendOnlineUsersToAll()
 
 		go writePump(client)

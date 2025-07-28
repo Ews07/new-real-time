@@ -46,7 +46,7 @@ type MessageBroadcast struct {
 	FromNickname string `json:"from_nickname"`
 }
 
-func handleMessages() {
+func handleMessages(db *sql.DB) {
 	for {
 		msg := <-broadcast
 
@@ -90,14 +90,22 @@ func handleMessages() {
 
 		// Update LastMessage and LastMessageTime for both users involved in the conversation
 		if u, ok := onlineUsers[msg.To]; ok {
-			u.LastMessage = msg.Content
-			u.LastMessageTime = sentTime
+			lastMsg, lastTime := getLastMessageBetweenUsers(db, msg.To, msg.From)
+			u.LastMessage = lastMsg
+			u.LastMessageTime = lastTime
+
+			// If no previous messages, use current message
+			if lastMsg == "" {
+				u.LastMessage = msg.Content
+				u.LastMessageTime = sentTime
+			}
 		}
+
+		// For the sender, always use the current message they just sent
 		if u, ok := onlineUsers[msg.From]; ok {
 			u.LastMessage = msg.Content
 			u.LastMessageTime = sentTime
 		}
-
 		// Broadcast updated user list to all clients
 		sendOnlineUsersToAll()
 	}
@@ -182,6 +190,8 @@ func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.T
 
 // loadUserPresenceFromDB loads the user presence data including last message info
 func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
+	log.Printf("Loading user presence data for user: %s", userUUID)
+
 	// Get all other users to populate their presence data
 	rows, err := db.Query(`SELECT uuid, nickname FROM users WHERE uuid != ?`, userUUID)
 	if err != nil {
@@ -193,26 +203,46 @@ func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
 	for rows.Next() {
 		var otherUserUUID, nickname string
 		if err := rows.Scan(&otherUserUUID, &nickname); err != nil {
-			continue
-		}
-
-		// Skip if this user is already in our online users map
-		if _, exists := onlineUsers[otherUserUUID]; exists {
+			log.Printf("Error scanning user row: %v", err)
 			continue
 		}
 
 		// Get last message between current user and this other user
 		lastMsg, lastMsgTime := getLastMessageBetweenUsers(db, userUUID, otherUserUUID)
 
-		// Add to onlineUsers map (they're offline until they connect)
-		onlineUsers[otherUserUUID] = &UserPresence{
-			UserUUID:        otherUserUUID,
-			Nickname:        nickname,
-			LastMessage:     lastMsg,
-			LastMessageTime: lastMsgTime,
-			IsOnline:        false,
+		log.Printf("Processing user %s (%s): lastMsg='%s', lastTime=%v",
+			otherUserUUID, nickname, lastMsg, lastMsgTime)
+
+		// Always update or create the user presence data
+		if existingUser, exists := onlineUsers[otherUserUUID]; exists {
+			// Update existing user's message data but preserve online status
+			log.Printf("Updating existing user %s: was online=%v", nickname, existingUser.IsOnline)
+
+			existingUser.Nickname = nickname
+			existingUser.LastMessage = lastMsg
+			existingUser.LastMessageTime = lastMsgTime
+			// Keep the existing IsOnline status - don't change it!
+
+		} else {
+			// Add new user (they're offline until they connect)
+			log.Printf("Adding new offline user: %s", nickname)
+
+			onlineUsers[otherUserUUID] = &UserPresence{
+				UserUUID:        otherUserUUID,
+				Nickname:        nickname,
+				LastMessage:     lastMsg,
+				LastMessageTime: lastMsgTime,
+				IsOnline:        false, // They're offline until they connect
+			}
 		}
 	}
+
+	// Check for any errors from iterating over rows
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating over user rows: %v", err)
+	}
+
+	log.Printf("Completed loading user presence data. Total users in map: %d", len(onlineUsers))
 }
 
 func readPump(db *sql.DB, client *Client) {
