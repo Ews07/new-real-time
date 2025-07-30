@@ -214,7 +214,7 @@ func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]Message
 			continue
 		}
 		m.SentAt = sentAt.Format(time.RFC3339)
-		messages = append(messages, m)
+		messages = append([]MessageWithAuthor{m}, messages...)
 	}
 
 	// Check for errors during iteration
