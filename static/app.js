@@ -534,7 +534,7 @@ function renderIncomingMessage(msg) {
 }
 function showMessageNotification(msg) {
   // Simple notification - you can make this more sophisticated
-  console.log(`New message from ${msg.from_nickname}: ${msg.content}`);
+  alert(`New message from ${msg.from_nickname}: ${msg.content}`);
 
   // You could add a visual notification here, like:
   // - A badge next to the user's name
@@ -573,6 +573,7 @@ function renderOnlineUsers(users) {
 
   // Re-render the user list
   updateUserList()
+  showMessageNotification()
 }
 
 

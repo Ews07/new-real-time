@@ -33,7 +33,8 @@ type Message struct {
 type UserPresence struct {
 	UserUUID        string    `json:"user_uuid"`
 	Nickname        string    `json:"nickname"`
-	LastMessage     string    `json:"last_message"`      // preview of last message content
+	LastMessage     string    `json:"last_message"` // preview of last message content
+	count           int       `json:"count"`
 	LastMessageTime time.Time `json:"last_message_time"` // timestamp for sorting
 	IsOnline        bool      `json:"is_online"`
 }
@@ -92,6 +93,7 @@ func handleMessages(db *sql.DB) {
 		if u, ok := onlineUsers[msg.To]; ok {
 			lastMsg, lastTime := getLastMessageBetweenUsers(db, msg.To, msg.From)
 			u.LastMessage = lastMsg
+			u.count += 1
 			u.LastMessageTime = lastTime
 
 			// If no previous messages, use current message
@@ -107,12 +109,13 @@ func handleMessages(db *sql.DB) {
 			u.LastMessageTime = sentTime
 		}
 		// Broadcast updated user list to all clients
-		sendOnlineUsersToAll()
+		sendOnlineUsersToAll(msg.From, msg.To)
+
 	}
 }
 
 // sendOnlineUsersToAll broadcasts the sorted user list to all connected clients
-func sendOnlineUsersToAll() {
+func sendOnlineUsersToAll(senderUUID, receiverUUID string) {
 	users := []UserPresence{}
 	for _, u := range onlineUsers {
 		users = append(users, *u)
@@ -147,23 +150,20 @@ func sendOnlineUsersToAll() {
 	data := map[string]interface{}{
 		"type":  "user_list",
 		"users": users,
+		"count": 0,
 	}
-
 	encoded, err := json.Marshal(data)
 	if err != nil {
 		log.Println("Error marshaling user list:", err)
 		return
 	}
 
-	// Send to all connected clients
-	for _, client := range clients {
-		select {
-		case client.Send <- encoded:
-			// Message sent successfully
-		default:
-			// Client's send channel is blocked, skip this client
-			log.Printf("Skipping blocked client: %s", client.UserUUID)
-		}
+	// Send only to message participants
+	// if client, ok := clients[senderUUID]; ok {
+	// 	client.Send <- encoded
+	// }
+	if client, ok := clients[receiverUUID]; ok {
+		client.Send <- encoded
 	}
 }
 
@@ -245,6 +245,34 @@ func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
 	log.Printf("Completed loading user presence data. Total users in map: %d", len(onlineUsers))
 }
 
+// New function for full broadcast
+func sendOnlineUsersToAllConnected() {
+	users := []UserPresence{}
+	for _, u := range onlineUsers {
+		users = append(users, *u)
+	}
+
+	data := map[string]interface{}{
+		"type":  "user_list",
+		"users": users,
+	}
+
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		log.Println("Error marshaling user list:", err)
+		return
+	}
+
+	// Send to all connected clients
+	for _, client := range clients {
+		select {
+		case client.Send <- encoded:
+		default:
+			log.Printf("Skipping blocked client: %s", client.UserUUID)
+		}
+	}
+}
+
 func readPump(db *sql.DB, client *Client) {
 	defer func() {
 		client.Conn.Close()
@@ -253,7 +281,7 @@ func readPump(db *sql.DB, client *Client) {
 			u.IsOnline = false
 		}
 		// Notify all users that this user went offline
-		sendOnlineUsersToAll()
+		sendOnlineUsersToAllConnected()
 	}()
 
 	for {
