@@ -5,6 +5,7 @@ let currentUserUUID = ""
 let postOffset = 0
 const postLimit = 5
 let allUsers = []
+let notificationTimeout;
 
 
 // SPA View Switcher
@@ -71,6 +72,18 @@ function createMessageElement(msg) {
 // On Page Load
 window.addEventListener("DOMContentLoaded", () => {
   console.log("DOM loaded, initializing application...");
+  const notificationPopup = document.getElementById('notification-popup');
+  const notificationCloseBtn = document.getElementById('notification-close');
+
+  if (notificationCloseBtn && notificationPopup) {
+    notificationCloseBtn.addEventListener('click', () => {
+      notificationPopup.classList.remove('visible');
+      // If the user closes it manually, cancel the auto-hide timer
+      if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+      }
+    });
+  }
 
   // Check session first
   fetch("/me", {
@@ -178,6 +191,34 @@ window.addEventListener("DOMContentLoaded", () => {
 
   console.log("Application initialization complete");
 })
+
+function showCustomNotification(title, message) {
+  const notificationPopup = document.getElementById('notification-popup');
+  const notificationTitle = document.getElementById('notification-title');
+  const notificationMessage = document.getElementById('notification-message');
+
+  if (!notificationPopup || !notificationTitle || !notificationMessage) {
+    console.error("Notification elements not found!");
+    return;
+  }
+
+  // Populate the notification with the new message info
+  notificationTitle.textContent = title;
+  notificationMessage.textContent = message;
+
+  // Make it visible by adding the 'visible' class
+  notificationPopup.classList.add('visible');
+
+  // If a notification is already showing, reset its hide timer
+  if (notificationTimeout) {
+    clearTimeout(notificationTimeout);
+  }
+
+  // Set a timer to automatically hide the notification after 5 seconds
+  notificationTimeout = setTimeout(() => {
+    notificationPopup.classList.remove('visible');
+  }, 5000);
+}
 
 // Login Logic
 function login() {
@@ -486,62 +527,54 @@ function loadMessages() {
 }
 // Render new incoming message
 function renderIncomingMessage(msg) {
-  console.log("Received message:", msg);
-  console.log("Current chat with:", chatWith);
-  console.log("Message from:", msg.from, "Message to:", msg.to);
-  console.log("Current user UUID:", currentUserUUID);
-
-  // Determine if this message is relevant to the currently open chat
+  // PART 1: Determine if the message belongs to the chat window that is currently open.
   const isRelevantToCurrentChat =
-    (msg.from === chatWith && msg.to === currentUserUUID) || // Message from the person I'm chatting with
-    (msg.from === currentUserUUID && msg.to === chatWith);   // Message I sent to the person I'm chatting with
+    (msg.from === chatWith && msg.to === currentUserUUID) ||
+    (msg.from === currentUserUUID && msg.to === chatWith);
 
-  // If we have a chat open and this message is relevant, show it
+  // PART 2: If the chat IS open, just append the new message to the history.
+  // This is the simplest case. We don't need notifications if the user is already looking at the conversation.
   if (chatWith && isRelevantToCurrentChat) {
     const chatHistory = document.getElementById("chat-history");
-    if (!chatHistory) {
-      console.error("chat-history element not found");
-      return;
-    }
-
-    // Remove "no messages" placeholder if it exists
-    const noMessagesDiv = chatHistory.querySelector('div');
-    if (noMessagesDiv && noMessagesDiv.textContent.includes('No messages yet')) {
-      noMessagesDiv.remove();
-    }
+    if (!chatHistory) return; // Safety check
 
     const messageEl = createMessageElement(msg);
-
-    // Check if user is near the bottom of the chat before appending
-    const isScrolledToBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 1;
-
     chatHistory.appendChild(messageEl);
 
-    // Auto-scroll only if the user was already at the bottom
-    if (isScrolledToBottom) {
-      chatHistory.scrollTop = chatHistory.scrollHeight;
+    // Auto-scroll to the bottom to show the new message
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
+
+  // PART 3: Handle all notifications for messages that are NOT from the current user.
+  // This block runs for any message received from another person.
+  if (msg.from !== currentUserUUID) {
+
+    // 3a. Add the persistent "unread dot" indicator to the user in the list.
+    // This happens whether the pop-up appears or not. It marks the conversation as having new messages.
+    const userList = document.getElementById("all-users");
+    const userItem = userList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    if (userItem) {
+      userItem.classList.add('has-unread');
     }
 
-    console.log("Message displayed in current chat");
-  } else {
-    console.log("Message not displayed - either no active chat or message not relevant to current chat");
-
-    // Optional: Show notification for messages from other chats
-    if (msg.from !== currentUserUUID && (!chatWith || msg.from !== chatWith)) {
-      showMessageNotification(msg);
+    // 3b. If the chat with the sender is NOT the one that's currently open, show the pop-up notification.
+    // This prevents a pop-up from appearing for a conversation you're actively viewing.
+    if (!isRelevantToCurrentChat) {
+      showCustomNotification(`New message from ${msg.from_nickname}`, msg.content);
     }
   }
 }
-function showMessageNotification(msg) {
-  // Simple notification - you can make this more sophisticated
-  alert(`New message from ${msg.from_nickname}: ${msg.content}`);
 
-  // You could add a visual notification here, like:
-  // - A badge next to the user's name
-  // - A toast notification
-  // - Sound notification
-  // For now, just console log
-}
+// function showMessageNotification(msg) {
+//   // Simple notification - you can make this more sophisticated
+//   alert(`New message from ${msg.from_nickname}: ${msg.content}`);
+
+//   // You could add a visual notification here, like:
+//   // - A badge next to the user's name
+//   // - A toast notification
+//   // - Sound notification
+//   // For now, just console log
+// }
 
 // Update online status and re-render
 function renderOnlineUsers(users) {
@@ -573,7 +606,7 @@ function renderOnlineUsers(users) {
 
   // Re-render the user list
   updateUserList()
-  showMessageNotification()
+  // showMessageNotification()
 }
 
 
