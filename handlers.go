@@ -329,7 +329,7 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 		loadUserPresenceFromDB(db, userUUID)
 		log.Printf("User %s presence established, loading other users completed", nickname)
 
-		sendOnlineUsersToAllConnected()
+		sendOnlineUsersToAllConnected(db)
 
 		go writePump(client)
 		readPump(db, client)
@@ -340,7 +340,7 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 			u.IsOnline = false
 		}
 		// Notify all clients that this user went offline
-		sendOnlineUsersToAllConnected()
+		sendOnlineUsersToAllConnected(db)
 	}
 }
 

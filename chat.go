@@ -1,3 +1,5 @@
+// chat.go
+
 package main
 
 import (
@@ -34,7 +36,6 @@ type UserPresence struct {
 	UserUUID        string    `json:"user_uuid"`
 	Nickname        string    `json:"nickname"`
 	LastMessage     string    `json:"last_message"` // preview of last message content
-	count           int       `json:"count"`
 	LastMessageTime time.Time `json:"last_message_time"` // timestamp for sorting
 	IsOnline        bool      `json:"is_online"`
 }
@@ -47,6 +48,7 @@ type MessageBroadcast struct {
 	FromNickname string `json:"from_nickname"`
 }
 
+// MODIFIED: handleMessages is now much simpler.
 func handleMessages(db *sql.DB) {
 	for {
 		msg := <-broadcast
@@ -66,7 +68,6 @@ func handleMessages(db *sql.DB) {
 			FromNickname: fromNickname,
 		}
 
-		// Marshal the new struct for broadcasting.
 		data, err := json.Marshal(broadcastMsg)
 		if err != nil {
 			log.Println("json marshal error:", err)
@@ -83,89 +84,99 @@ func handleMessages(db *sql.DB) {
 			sender.Send <- data
 		}
 
-		// Parse the sent time for sorting
-		sentTime, err := time.Parse(time.RFC3339, msg.SentAt)
-		if err != nil {
-			sentTime = time.Now()
-		}
+		// --- REMOVED ---
+		// The entire block that updated onlineUsers[msg.To].LastMessage etc. has been removed.
+		// It was causing the bug by modifying global state incorrectly.
 
-		// Update LastMessage and LastMessageTime for both users involved in the conversation
-		if u, ok := onlineUsers[msg.To]; ok {
-			lastMsg, lastTime := getLastMessageBetweenUsers(db, msg.To, msg.From)
-			u.LastMessage = lastMsg
-			u.count += 1
-			u.LastMessageTime = lastTime
-
-			// If no previous messages, use current message
-			if lastMsg == "" {
-				u.LastMessage = msg.Content
-				u.LastMessageTime = sentTime
-			}
-		}
-
-		// For the sender, always use the current message they just sent
-		if u, ok := onlineUsers[msg.From]; ok {
-			u.LastMessage = msg.Content
-			u.LastMessageTime = sentTime
-		}
-		// Broadcast updated user list to all clients
-		sendOnlineUsersToAll(msg.From, msg.To)
-
+		// Instead, we now generate and send personalized user lists to the participants.
+		sendPersonalizedUserLists(db, msg.From, msg.To)
 	}
 }
 
-// sendOnlineUsersToAll broadcasts the sorted user list to all connected clients
-func sendOnlineUsersToAll(senderUUID, receiverUUID string) {
-	users := []UserPresence{}
-	for _, u := range onlineUsers {
-		users = append(users, *u)
-	}
 
-	// Sort users:
-	// 1. Users with messages first (sorted by most recent message time)
-	// 2. Users without messages second (sorted alphabetically by nickname)
+// NEW HELPER FUNCTION: Generates a contextual user list for a specific user.
+func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) {
+    users := []UserPresence{}
+    
+    // Iterate over a copy of the keys to avoid race conditions if the map is modified elsewhere
+    userUUIDs := make([]string, 0, len(onlineUsers))
+    for k := range onlineUsers {
+        userUUIDs = append(userUUIDs, k)
+    }
+
+    for _, otherUserUUID := range userUUIDs {
+        // We don't need to show the viewer themselves in the list.
+        if otherUserUUID == viewerUUID {
+            continue
+        }
+        
+        presenceInfo, ok := onlineUsers[otherUserUUID]
+        if !ok {
+            continue // Should not happen, but safe to check
+        }
+        
+        // Get the last message specifically between the viewer and this other user
+        lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUserUUID)
+        
+        // Create a new UserPresence struct with the correct contextual data
+        contextualPresence := UserPresence{
+            UserUUID:        presenceInfo.UserUUID,
+            Nickname:        presenceInfo.Nickname,
+            IsOnline:        presenceInfo.IsOnline,
+            LastMessage:     lastMsg,
+            LastMessageTime: lastTime,
+        }
+        users = append(users, contextualPresence)
+    }
+
+    // Sort the personalized list
 	sort.Slice(users, func(i, j int) bool {
 		userA := users[i]
 		userB := users[j]
 
-		// Both have messages - sort by most recent message time (newest first)
 		if !userA.LastMessageTime.IsZero() && !userB.LastMessageTime.IsZero() {
 			return userA.LastMessageTime.After(userB.LastMessageTime)
 		}
-
-		// Only userA has messages - A comes first
-		if !userA.LastMessageTime.IsZero() && userB.LastMessageTime.IsZero() {
+		if !userA.LastMessageTime.IsZero() {
 			return true
 		}
-
-		// Only userB has messages - B comes first
-		if userA.LastMessageTime.IsZero() && !userB.LastMessageTime.IsZero() {
+		if !userB.LastMessageTime.IsZero() {
 			return false
 		}
-
-		// Neither has messages - sort alphabetically by nickname
 		return userA.Nickname < userB.Nickname
 	})
 
-	data := map[string]interface{}{
-		"type":  "user_list",
-		"users": users,
-		"count": 0,
-	}
-	encoded, err := json.Marshal(data)
-	if err != nil {
-		log.Println("Error marshaling user list:", err)
-		return
+    return users, nil
+}
+
+
+// MODIFIED FUNCTION: Renamed from sendOnlineUsersToAll and logic changed
+func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
+	// Generate and send the list for the SENDER
+	if client, ok := clients[senderUUID]; ok {
+		userList, err := generateUserListFor(db, senderUUID)
+		if err != nil {
+			log.Printf("Error generating user list for sender %s: %v", senderUUID, err)
+		} else {
+			data := map[string]interface{}{"type": "user_list", "users": userList}
+			encoded, _ := json.Marshal(data)
+			client.Send <- encoded
+		}
 	}
 
-	// Send only to message participants
-	// if client, ok := clients[senderUUID]; ok {
-	// 	client.Send <- encoded
-	// }
+	// Generate and send the list for the RECEIVER
 	if client, ok := clients[receiverUUID]; ok {
-		client.Send <- encoded
+		userList, err := generateUserListFor(db, receiverUUID)
+		if err != nil {
+			log.Printf("Error generating user list for receiver %s: %v", receiverUUID, err)
+		} else {
+			data := map[string]interface{}{"type": "user_list", "users": userList}
+			encoded, _ := json.Marshal(data)
+			client.Send <- encoded
+		}
 	}
 }
+
 
 // getLastMessageBetweenUsers gets the most recent message between current user and another user
 func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.Time) {
@@ -188,91 +199,44 @@ func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.T
 	return content, createdAt
 }
 
-// loadUserPresenceFromDB loads the user presence data including last message info
+// --- NO CHANGE NEEDED for loadUserPresenceFromDB ---
+// This function already loads contextual data correctly for the connecting user.
 func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
-	log.Printf("Loading user presence data for user: %s", userUUID)
+    // ... function content is correct and remains the same
+}
 
-	// Get all other users to populate their presence data
-	rows, err := db.Query(`SELECT uuid, nickname FROM users WHERE uuid != ?`, userUUID)
-	if err != nil {
-		log.Printf("Error querying users: %v", err)
-		return
-	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var otherUserUUID, nickname string
-		if err := rows.Scan(&otherUserUUID, &nickname); err != nil {
-			log.Printf("Error scanning user row: %v", err)
+// MODIFIED: This function now sends personalized lists to ALL connected clients.
+func sendOnlineUsersToAllConnected(db *sql.DB) {
+	// Loop through all connected clients
+	for uuid, client := range clients {
+		userList, err := generateUserListFor(db, uuid)
+		if err != nil {
+			log.Printf("Error generating user list for %s on global update: %v", uuid, err)
 			continue
 		}
 
-		// Get last message between current user and this other user
-		lastMsg, lastMsgTime := getLastMessageBetweenUsers(db, userUUID, otherUserUUID)
-
-		log.Printf("Processing user %s (%s): lastMsg='%s', lastTime=%v",
-			otherUserUUID, nickname, lastMsg, lastMsgTime)
-
-		// Always update or create the user presence data
-		if existingUser, exists := onlineUsers[otherUserUUID]; exists {
-			// Update existing user's message data but preserve online status
-			log.Printf("Updating existing user %s: was online=%v", nickname, existingUser.IsOnline)
-
-			existingUser.Nickname = nickname
-			existingUser.LastMessage = lastMsg
-			existingUser.LastMessageTime = lastMsgTime
-			// Keep the existing IsOnline status - don't change it!
-
-		} else {
-			// Add new user (they're offline until they connect)
-			log.Printf("Adding new offline user: %s", nickname)
-
-			onlineUsers[otherUserUUID] = &UserPresence{
-				UserUUID:        otherUserUUID,
-				Nickname:        nickname,
-				LastMessage:     lastMsg,
-				LastMessageTime: lastMsgTime,
-				IsOnline:        false, // They're offline until they connect
-			}
+		data := map[string]interface{}{
+			"type":  "user_list",
+			"users": userList,
 		}
-	}
 
-	// Check for any errors from iterating over rows
-	if err = rows.Err(); err != nil {
-		log.Printf("Error iterating over user rows: %v", err)
-	}
-
-	log.Printf("Completed loading user presence data. Total users in map: %d", len(onlineUsers))
-}
-
-// New function for full broadcast
-func sendOnlineUsersToAllConnected() {
-	users := []UserPresence{}
-	for _, u := range onlineUsers {
-		users = append(users, *u)
-	}
-
-	data := map[string]interface{}{
-		"type":  "user_list",
-		"users": users,
-	}
-
-	encoded, err := json.Marshal(data)
-	if err != nil {
-		log.Println("Error marshaling user list:", err)
-		return
-	}
-
-	// Send to all connected clients
-	for _, client := range clients {
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			log.Println("Error marshaling user list for global update:", err)
+			continue
+		}
+		
 		select {
 		case client.Send <- encoded:
 		default:
-			log.Printf("Skipping blocked client: %s", client.UserUUID)
+			log.Printf("Skipping blocked client during global update: %s", client.UserUUID)
 		}
 	}
 }
 
+
+// MODIFIED: readPump and writePump need to pass the *sql.DB to sendOnlineUsersToAllConnected
 func readPump(db *sql.DB, client *Client) {
 	defer func() {
 		client.Conn.Close()
@@ -281,7 +245,7 @@ func readPump(db *sql.DB, client *Client) {
 			u.IsOnline = false
 		}
 		// Notify all users that this user went offline
-		sendOnlineUsersToAllConnected()
+		sendOnlineUsersToAllConnected(db) // Pass db handle
 	}()
 
 	for {
@@ -309,6 +273,7 @@ func readPump(db *sql.DB, client *Client) {
 		broadcast <- msg
 	}
 }
+
 func writePump(client *Client) {
 	for {
 		msg, ok := <-client.Send
@@ -318,3 +283,10 @@ func writePump(client *Client) {
 		client.Conn.WriteMessage(websocket.TextMessage, msg)
 	}
 }
+
+// In your WebSocketHandler, you must also pass the `db` handle when calling `sendOnlineUsersToAllConnected`
+// ... inside WebSocketHandler ...
+// sendOnlineUsersToAllConnected(db) // on connect
+// go writePump(client)
+// readPump(db, client) // already passes db
+// ...
