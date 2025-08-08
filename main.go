@@ -22,7 +22,7 @@ func main() {
 	r.HandleFunc("/register", RegisterHandler(db)).Methods("POST")
 	r.HandleFunc("/login", LoginHandler(db)).Methods("POST")
 	//Protected Routes
-	r.Handle("/me", AuthMiddleware(MeHandler(), db)).Methods("GET")
+	r.Handle("/me", AuthMiddleware(MeHandler(db), db)).Methods("GET")
 	r.Handle("/logout", AuthMiddleware(LogoutHandler(db), db)).Methods("POST")
 	r.Handle("/posts", AuthMiddleware(CreatePostHandler(db), db)).Methods("POST")
 	r.Handle("/ws", AuthMiddleware(WebSocketHandler(db), db)).Methods("GET")

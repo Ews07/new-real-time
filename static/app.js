@@ -134,6 +134,7 @@ window.addEventListener("DOMContentLoaded", () => {
     .then(data => {
       console.log("User authenticated:", data);
       currentUserUUID = data.user_uuid
+      updateWelcomeMessage(data.nickname);
       showChatUI()
       connectWebSocket()
     })
@@ -229,6 +230,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
   console.log("Application initialization complete");
 })
+
+function updateWelcomeMessage(nickname) {
+  const welcomeElement = document.querySelector('#main-column h2');
+  if (welcomeElement) {
+    welcomeElement.textContent = `Welcome to the Forum, ${nickname}!`;
+  }
+}
 
 function showCustomNotification(title, message, senderUUID = null) {
   const notificationPopup = document.getElementById('notification-popup');
@@ -343,6 +351,7 @@ function login() {
         .then(res => res.json())
         .then(data => {
           currentUserUUID = data.user_uuid
+          updateWelcomeMessage(data.nickname);
           showChatUI()
           connectWebSocket()
           fetchAllUsers()

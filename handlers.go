@@ -389,7 +389,9 @@ func GetMessagesHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func MeHandler() http.Handler {
+// Add this updated MeHandler function to your handlers.go
+
+func MeHandler(db *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userUUID, ok := UserUUIDFromContext(r.Context())
 		if !ok {
@@ -397,9 +399,19 @@ func MeHandler() http.Handler {
 			return
 		}
 
+		// Fetch user's nickname from database
+		var nickname string
+		err := db.QueryRow("SELECT nickname FROM users WHERE uuid = ?", userUUID).Scan(&nickname)
+		if err != nil {
+			log.Printf("Could not find nickname for user %s: %v", userUUID, err)
+			http.Error(w, "User not found", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"user_uuid": userUUID,
+			"nickname":  nickname,
 		})
 	})
 }
