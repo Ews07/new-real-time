@@ -513,6 +513,164 @@ button:hover {
   /* Override default button hover */
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#post-feed .post-item {
+  animation: fadeIn 0.4s ease-out;
+  cursor: pointer;
+}
+
+.post-item {
+  padding: 12px;
+  margin-bottom: 12px;
+  transition: background-color 0.2s ease;
+}
+
+.post-item:hover {
+  background-color: #fafafa;
+}
+
+.post-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.post-header .nickname {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.post-header .timestamp {
+  font-size: 12px;
+  color: #65676b;
+}
+
+.post-body .title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.post-body .content {
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+/* --- POST MODAL --- */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1002;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.modal-content {
+  background: #f0f2f5;
+  padding: 20px;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 28px;
+  font-weight: bold;
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+}
+
+.modal-close-btn:hover {
+  color: #000;
+}
+
+.post-item-full {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+#modal-post-title {
+  font-size: 22px;
+  margin-top: 8px;
+}
+
+.post-content-full {
+  margin-top: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Comments Section (in Modal) */
+.comments-section {
+  margin-top: 16px;
+}
+
+#modal-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.comment-item {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.comment-body {
+  background: #f0f2f5;
+  padding: 6px 12px;
+  border-radius: 18px;
+  width: fit-content;
+}
+
+.comment-author {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.comment-input-box {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #ddd;
+}
+
+.comment-input-box textarea {
+  flex-grow: 1;
+}
+
+
 /* Typing indicator styles */
 .typing-indicator {
   padding: 10px;

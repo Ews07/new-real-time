@@ -9,6 +9,8 @@ let notificationTimeout;
 let typingTimer = null
 let isCurrentlyTyping = false
 let typingUsers = new Map() // Map of userUUID -> {nickname, isTyping}
+const postModal = document.getElementById('post-modal');
+const modalCloseBtn = document.getElementById('modal-close-btn');
 
 
 // SPA View Switcher
@@ -995,31 +997,48 @@ let currentPostUUID = ""
 
 function openPostView(uuid) {
   currentPostUUID = uuid
-  document.getElementById("post-feed").classList.add("hidden")
-  document.getElementById("single-post-view").classList.remove("hidden")
 
   fetch(`/post?uuid=${uuid}`, { credentials: "include" })
     .then(res => res.json())
     .then(data => {
-      document.getElementById("single-post-author").textContent = "Posted by:  " + data.nickname
-      document.getElementById("single-post-title").textContent = data.title
-      document.getElementById("single-post-content").textContent = data.content
+      document.getElementById("modal-post-author").textContent = data.nickname;
+      document.getElementById("modal-post-timestamp").textContent = new Date(data.created_at).toLocaleString();
+      document.getElementById("modal-post-title").textContent = data.title;
+      document.getElementById("modal-post-content").textContent = data.content;
 
-      const commentsDiv = document.getElementById("comments-list")
+      const commentsDiv = document.getElementById("modal-comments-list")
       commentsDiv.innerHTML = ""
       data.comments.forEach(c => {
         const d = document.createElement("div")
-        d.innerHTML = `<b>${c.author}</b>: ${c.content}<br><small>${new Date(c.created_at).toLocaleString()}</small>`
-        commentsDiv.appendChild(d)
+        d.className = "comment-item";
+        d.innerHTML = `
+          <div class="comment-body">
+            <div class="comment-author">${c.author}</div>
+            <div class="comment-content">${c.content}</div>
+          </div>
+        `;
+        commentsDiv.appendChild(d);
       })
+      postModal.classList.remove("hidden");
+      document.body.classList.add("modal-open");
     })
+}
+function closePostModal() {
+  postModal.classList.add("hidden");
+  document.body.classList.remove("modal-open");
 }
 
 function backToFeed() {
-  document.getElementById("post-feed").classList.remove("hidden")
-  document.getElementById("single-post-view").classList.add("hidden")
-  currentPostUUID = ""
+  closePostModal()
 }
+modalCloseBtn.addEventListener('click', closePostModal);
+
+postModal.addEventListener('click', (event) => {
+  // Close modal if user clicks on the overlay (outside the content)
+  if (event.target === postModal) {
+    closePostModal();
+  }
+});
 
 // function submitPost() {
 //   const title = document.getElementById("post-title").value.trim()
@@ -1114,24 +1133,6 @@ function submitPost() {
 
 
 
-document.getElementById("submit-comment").addEventListener("click", () => {
-  const content = document.getElementById("comment-text").value.trim()
-  if (!content || !currentPostUUID) return alert("Cannot post empty comment")
-
-  fetch("/comment", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ post_uuid: currentPostUUID, content })
-  }).then(res => {
-    if (res.ok) {
-      document.getElementById("comment-text").value = ""
-      openPostView(currentPostUUID) // reload comments
-    } else {
-      res.text().then(alert)
-    }
-  })
-})
 
 function resetPostFeed() {
   postOffset = 0

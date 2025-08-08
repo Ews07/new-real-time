@@ -83,21 +83,32 @@
         <div id="post-container">
           <div id="post-feed"></div>
           <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
-          <div id="single-post-view" class="hidden">
-            <h2 id="single-post-author"></h2>
-            <h3 id="single-post-title"></h3>
-            <p id="single-post-content"></p>
-            <div id="comments-list"></div>
-            <textarea id="comment-text" placeholder="Write a comment..."></textarea>
-            <button id="submit-comment">Comment</button>
-            <button onclick="backToFeed()">⬅ Back</button>
-          </div>
         </div>
       </div>
-      <!-- Chat Box (bottom of main column or floating if needed) -->
     </div>
 
 
+  </div>
+  <div id="post-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+      <div class="post-item-full">
+        <div class="post-header">
+          <span id="modal-post-author" class="nickname"></span>
+          <span id="modal-post-timestamp" class="timestamp"></span>
+        </div>
+        <h2 id="modal-post-title"></h2>
+        <div id="modal-post-content" class="post-content-full"></div>
+      </div>
+      <div class="comments-section">
+        <h4>Comments</h4>
+        <div id="modal-comments-list"></div>
+        <div class="comment-input-box">
+          <textarea id="comment-text" placeholder="Write a comment..."></textarea>
+          <button id="submit-comment" class="btn btn-primary">Comment</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
