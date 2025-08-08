@@ -839,66 +839,84 @@ function setupMessageInput() {
     chatPopupClose.addEventListener("click", hideChatPopup);
   }
 
+  // Track the last input content to detect changes
+  let lastInputContent = "";
+  let typingTimer = null;
+
   // Handle typing events
-  // NEW CODE - More responsive typing detection:
   chatInput.addEventListener("input", function (e) {
     if (!chatWith) return;
 
     const content = chatInput.value.trim();
 
-    if (content.length > 0) {
+    // Send typing_start only if content has changed and is non-empty
+    if (content !== lastInputContent && content.length > 0 && !isCurrentlyTyping) {
       handleTypingStart();
-      clearTimeout(typingTimer);
+      isCurrentlyTyping = true;
+    } else if (content.length === 0 && isCurrentlyTyping) {
+      handleTypingStop();
+      isCurrentlyTyping = false;
+    }
+
+    // Update last known content
+    lastInputContent = content;
+
+    // Reset the typing stop timer
+    clearTimeout(typingTimer);
+    if (content.length > 0) {
       typingTimer = setTimeout(() => {
         handleTypingStop();
-      }, 300); // Reduced to 300ms for immediate response
-    } else {
-      clearTimeout(typingTimer);
-      handleTypingStop();
+        isCurrentlyTyping = false;
+        lastInputContent = chatInput.value.trim();
+      }, 300); // 300ms delay for immediate stop
     }
   });
 
-  // ADD THIS NEW EVENT LISTENER after the input listener:
+  // Handle keyup for faster typing stop detection
   chatInput.addEventListener("keyup", function (e) {
     if (!chatWith) return;
 
-    clearTimeout(typingTimer);
     const content = chatInput.value.trim();
 
+    // Reset the typing stop timer
+    clearTimeout(typingTimer);
     if (content.length > 0) {
       typingTimer = setTimeout(() => {
         handleTypingStop();
-      }, 300); // Very short delay - almost immediate
-    } else {
+        isCurrentlyTyping = false;
+        lastInputContent = chatInput.value.trim();
+      }, 300); // 300ms delay for immediate stop
+    } else if (isCurrentlyTyping) {
       handleTypingStop();
+      isCurrentlyTyping = false;
+      lastInputContent = "";
     }
   });
 
-  // Handle focus events
-  chatInput.addEventListener("focus", function (e) {
-    if (!chatWith) return;
-    // Optional: Could send typing_start on focus if there's content
-    const content = chatInput.value.trim();
-    if (content.length > 0) {
-      handleTypingStart();
-    }
-  });
-
+  // Handle blur to stop typing
   chatInput.addEventListener("blur", function (e) {
-    // User left the input field, stop typing
+    if (!chatWith) return;
     clearTimeout(typingTimer);
-    handleTypingStop();
+    if (isCurrentlyTyping) {
+      handleTypingStop();
+      isCurrentlyTyping = false;
+      lastInputContent = chatInput.value.trim();
+    }
   });
 
+  // Handle Enter key to send message
   chatInput.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
       e.preventDefault();
 
       // Clear typing status immediately when sending message
       clearTimeout(typingTimer);
-      handleTypingStop();
+      if (isCurrentlyTyping) {
+        handleTypingStop();
+        isCurrentlyTyping = false;
+      }
 
-      const content = chatInput.value.trim()
+      const content = chatInput.value.trim();
       if (!content) {
         console.log("Empty message, not sending");
         return;
@@ -919,22 +937,23 @@ function setupMessageInput() {
       const msg = {
         to: chatWith,
         content: content,
-      }
+      };
 
       console.log("Sending message:", msg);
 
       try {
-        socket.send(JSON.stringify(msg))
-        chatInput.value = ""
+        socket.send(JSON.stringify(msg));
+        chatInput.value = "";
+        lastInputContent = "";
         console.log("Message sent successfully");
       } catch (error) {
         console.error("Error sending message:", error);
         alert("Failed to send message. Please try again.");
       }
     }
-  })
-  setupChatScrollHandler();
+  });
 
+  setupChatScrollHandler();
 }
 // Call this function when the chat UI is shown
 function initializeChatInput() {
