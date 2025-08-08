@@ -72,10 +72,8 @@ CREATE TABLE IF NOT EXISTS likes_dislikes (
     FOREIGN KEY(user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
 );
 
-DROP TABLE IF EXISTS private_messages;
-
 -- FIXED: PrivateMessages table - using 'sent_at' to match the code
-CREATE TABLE private_messages (
+CREATE TABLE IF NOT EXISTS private_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid TEXT UNIQUE NOT NULL,
     sender_uuid TEXT NOT NULL,
@@ -88,8 +86,9 @@ CREATE TABLE private_messages (
 );
 
 -- for better query performance
-CREATE INDEX idx_private_messages_conversation 
+CREATE INDEX IF NOT EXISTS idx_private_messages_conversation 
 ON private_messages(sender_uuid, receiver_uuid, sent_at);
 
-CREATE INDEX idx_private_messages_sent_at 
+CREATE INDEX IF NOT EXISTS idx_private_messages_sent_at 
 ON private_messages(sent_at);
+
