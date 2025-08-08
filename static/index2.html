@@ -16,6 +16,17 @@
     <button id="notification-close">&times;</button>
   </div>
 
+  <div id="chat-popup">
+    <div id="chat-popup-header">
+      <h4 id="chat-popup-title">Select a user to chat</h4>
+      <button id="chat-popup-close">&times;</button>
+    </div>
+    <div id="chat-history"></div>
+    <div id="chat-input-container">
+      <input type="text" id="chat-input" placeholder="Type your message..." />
+    </div>
+  </div>
+
   <div class="container">
     <!-- LOGIN FORM -->
     <div id="login-section">
@@ -84,11 +95,6 @@
         </div>
       </div>
       <!-- Chat Box (bottom of main column or floating if needed) -->
-      <div id="chat-box" style="width: 300px;">
-        <div id="chat-history" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; margin-bottom: 10px;">
-        </div>
-        <input type="text" id="chat-input" placeholder="Type your message..." />
-      </div>
     </div>
 
 

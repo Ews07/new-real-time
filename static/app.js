@@ -31,6 +31,40 @@ function showChatUI() {
   // Set up scroll event for loading more messages
   setupChatScrollHandler()
 }
+function showChatPopup() {
+  const chatPopup = document.getElementById("chat-popup");
+  chatPopup.classList.add("visible");
+}
+
+function hideChatPopup() {
+  const chatPopup = document.getElementById("chat-popup");
+  chatPopup.classList.remove("visible");
+
+  // Clear chat state when closing
+  chatWith = "";
+  messagesOffset = 0;
+
+  // Clear typing status
+  clearTimeout(typingTimer);
+  handleTypingStop();
+  hideTypingIndicator();
+
+  // Remove active state from user items
+  document.querySelectorAll('.user-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  // Update popup title
+  document.getElementById("chat-popup-title").textContent = "Select a user to chat";
+
+  // Clear chat history
+  document.getElementById("chat-history").innerHTML = "";
+}
+
+function updateChatPopupTitle(nickname) {
+  document.getElementById("chat-popup-title").textContent = `Chat with ${nickname}`;
+}
+
 function setupChatScrollHandler() {
   const chatHistory = document.getElementById("chat-history");
   if (!chatHistory) {
@@ -191,6 +225,7 @@ window.addEventListener("DOMContentLoaded", () => {
       })
     })
   }
+  initializeChatInput();
 
   console.log("Application initialization complete");
 })
@@ -452,6 +487,13 @@ function openChat(userUUID) {
     console.error("No userUUID provided to openChat");
     return;
   }
+  // Find user nickname
+  const user = allUsers.find(u => u.uuid === userUUID);
+  const nickname = user ? user.nickname : "Unknown User";
+
+  // Show chat popup
+  showChatPopup();
+  updateChatPopupTitle(nickname);
 
   // Remove unread indicator when opening a chat
   const userList = document.getElementById("all-users");
@@ -783,6 +825,10 @@ function setupMessageInput() {
     console.error("chat-input element not found");
     return;
   }
+  const chatPopupClose = document.getElementById("chat-popup-close");
+  if (chatPopupClose) {
+    chatPopupClose.addEventListener("click", hideChatPopup);
+  }
 
   // Handle typing events
   // NEW CODE - More responsive typing detection:
@@ -878,6 +924,8 @@ function setupMessageInput() {
       }
     }
   })
+  setupChatScrollHandler();
+
 }
 // Call this function when the chat UI is shown
 function initializeChatInput() {
