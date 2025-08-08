@@ -197,6 +197,28 @@ type CreatePostRequest struct {
 	Categories []string `json:"categories"`
 }
 
+func GetCategoriesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query("SELECT name FROM categories")
+		if err != nil {
+			http.Error(w, "Failed to fetch categories", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var categories []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err == nil {
+				categories = append(categories, name)
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(categories)
+	}
+}
+
 func CreatePostHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userUUID, ok := UserUUIDFromContext(r.Context())
@@ -419,7 +441,7 @@ func GetPostsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		offsetStr := r.URL.Query().Get("offset")
 		limitStr := r.URL.Query().Get("limit")
-
+		category := r.URL.Query().Get("category")
 		offset, err := strconv.Atoi(offsetStr)
 		if err != nil {
 			offset = 0
@@ -429,7 +451,7 @@ func GetPostsHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil || limit <= 0 || limit > 50 {
 			limit = 10
 		}
-		posts, err := GetPostsPaginated(db, offset, limit)
+		posts, err := GetPostsPaginated(db, offset, limit, category)
 		log.Println("posts bck", posts)
 
 		if err != nil {

@@ -754,5 +754,25 @@ button:hover {
   }
 }
 
+
+#category-filter {
+  margin-bottom: 20px;
+  background-color: #555;
+}
+
+.category-btn {
+  margin-right: 10px;
+  padding: 5px 10px;
+  background-color: #6b6868;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.category-btn.active {
+  background-color: #0077ff;
+  color: white;
+}
+
 /* You can switch between animations by changing the animation property */
 /* .typing-dots span { animation: typing-pulse 1.4s infinite ease-in-out; } */

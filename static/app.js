@@ -11,7 +11,7 @@ let isCurrentlyTyping = false
 let typingUsers = new Map() // Map of userUUID -> {nickname, isTyping}
 const postModal = document.getElementById('post-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
-
+let currentCategory = "";
 
 // SPA View Switcher
 function showLoginUI() {
@@ -32,6 +32,7 @@ function showChatUI() {
 
   // Set up scroll event for loading more messages
   setupChatScrollHandler()
+  fetchCategories()
 }
 function showChatPopup() {
   const chatPopup = document.getElementById("chat-popup");
@@ -961,37 +962,85 @@ function setupMessageInput() {
 function initializeChatInput() {
   setupMessageInput();
 }
+function fetchCategories() {
+  fetch("/categories", { credentials: "include" })
+    .then(res => res.json())
+    .then(categories => {
+      const categoryFilter = document.getElementById("category-filter");
+      categoryFilter.innerHTML = '<button class="category-btn active" data-category="">All Categories</button>';
 
+      categories.forEach(cat => {
+        const btn = document.createElement("button");
+        btn.className = "category-btn";
+        btn.dataset.category = cat;
+        btn.textContent = cat;
+        btn.onclick = () => selectCategory(cat);
+        categoryFilter.appendChild(btn);
+      });
+
+      const allBtn = categoryFilter.querySelector('button[data-category=""]');
+      allBtn.onclick = () => selectCategory("");
+    })
+    .catch(err => {
+      console.error("Error fetching categories:", err);
+    });
+}
+
+function selectCategory(category) {
+  currentCategory = category;
+  postOffset = 0;
+  document.getElementById("post-feed").innerHTML = "";
+  loadPostFeed();
+
+  const buttons = document.querySelectorAll(".category-btn");
+  buttons.forEach(btn => {
+    if (btn.dataset.category === category) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+}
 
 function loadPostFeed() {
-  fetch(`/posts?offset=${postOffset}&limit=${postLimit}`, {
+  let url = `/posts?offset=${postOffset}&limit=${postLimit}`;
+  if (currentCategory) {
+    url += `&category=${encodeURIComponent(currentCategory)}`;
+  }
+
+  fetch(url, {
     credentials: "include",
   })
     .then(res => res.json())
     .then(posts => {
-      const feed = document.getElementById("post-feed")
-      console.log("postssss", posts)
+      const feed = document.getElementById("post-feed");
+      console.log("postssss", posts);
       posts.forEach(p => {
-        const div = document.createElement("div")
-        div.className = "post-item"
-        div.innerHTML = `<strong>${p.title}</strong><br>by ${p.nickname}<br><small>${new Date(p.created_at).toLocaleString()}</small>`
-        div.onclick = () => openPostView(p.uuid)
-        feed.appendChild(div)
+        const div = document.createElement("div");
+        div.className = "post-item";
+        div.innerHTML = `
+          <strong>${p.title}</strong><br>
+          by ${p.nickname}<br>
+          <small>${new Date(p.created_at).toLocaleString()}</small><br>
+          <small>Categories: ${p.categories ? p.categories.join(', ') : 'None'}</small>
+        `;
+        div.onclick = () => openPostView(p.uuid);
+        feed.appendChild(div);
         console.log("feed", feed);
+      });
 
-      })
-
-      // Hide "Load More" if no more posts
       if (posts.length < postLimit) {
-        document.getElementById("load-more-btn").style.display = "none"
+        document.getElementById("load-more-btn").style.display = "none";
       } else {
-        document.getElementById("load-more-btn").style.display = "block"
+        document.getElementById("load-more-btn").style.display = "block";
       }
 
-      postOffset += posts.length
+      postOffset += posts.length;
     })
+    .catch(err => {
+      console.error("Error loading posts:", err);
+    });
 }
-
 
 let currentPostUUID = ""
 

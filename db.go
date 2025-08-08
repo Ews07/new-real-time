@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -228,11 +229,12 @@ func LoadMessages(db *sql.DB, userA, userB string, limit, offset int) ([]Message
 }
 
 type Post struct {
-	UUID      string    `json:"uuid"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-	Nickname  string    `json:"nickname"` // author
+	UUID       string    `json:"uuid"`
+	Title      string    `json:"title"`
+	Content    string    `json:"content"`
+	CreatedAt  time.Time `json:"created_at"`
+	Nickname   string    `json:"nickname"` // author
+	Categories []string  `json:"categories"`
 }
 
 func LoadAllPosts(db *sql.DB) ([]Post, error) {
@@ -338,29 +340,86 @@ func GetRecentPosts(db *sql.DB, limit int) ([]Post, error) {
 	return posts, nil
 }
 
-func GetPostsPaginated(db *sql.DB, offset, limit int) ([]Post, error) {
+func GetPostsPaginated(db *sql.DB, offset, limit int, category string) ([]Post, error) {
 	query := `
-	SELECT posts.post_uuid, title, content, posts.created_at, users.nickname
-	FROM posts
-	JOIN users ON posts.user_uuid = users.uuid
-	ORDER BY posts.created_at DESC
-	LIMIT ? OFFSET ?
-`
+        SELECT p.id, p.post_uuid, p.title, p.content, p.created_at, u.nickname
+        FROM posts p
+        JOIN users u ON p.user_uuid = u.uuid
+    `
+	var args []interface{}
 
-	rows, err := db.Query(query, limit, offset)
+	if category != "" {
+		query += `
+            WHERE EXISTS (
+                SELECT 1
+                FROM post_categories pc
+                JOIN categories c ON pc.category_id = c.id
+                WHERE pc.post_id = p.id AND c.name = ?
+            )
+        `
+		args = append(args, category)
+	}
+
+	query += `
+        ORDER BY p.created_at DESC
+        LIMIT ? OFFSET ?
+    `
+	args = append(args, limit, offset)
+
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var posts []Post
+	var postIDs []int
+	idToPostIndex := make(map[int]int)
+
 	for rows.Next() {
 		var p Post
-		err := rows.Scan(&p.UUID, &p.Title, &p.Content, &p.CreatedAt, &p.Nickname)
+		var id int
+		err := rows.Scan(&id, &p.UUID, &p.Title, &p.Content, &p.CreatedAt, &p.Nickname)
 		if err != nil {
 			continue
 		}
 		posts = append(posts, p)
+		postIDs = append(postIDs, id)
+		idToPostIndex[id] = len(posts) - 1
 	}
+
+	if len(posts) > 0 {
+		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
+		catQuery := `
+            SELECT pc.post_id, c.name
+            FROM post_categories pc
+            JOIN categories c ON pc.category_id = c.id
+            WHERE pc.post_id IN (` + placeholders + `)
+        `
+		catRows, err := db.Query(catQuery, toInterfaceSlice(postIDs)...)
+		if err != nil {
+			return nil, err
+		}
+		defer catRows.Close()
+
+		for catRows.Next() {
+			var postID int
+			var category string
+			if err := catRows.Scan(&postID, &category); err == nil {
+				if idx, ok := idToPostIndex[postID]; ok {
+					posts[idx].Categories = append(posts[idx].Categories, category)
+				}
+			}
+		}
+	}
+
 	return posts, nil
+}
+
+func toInterfaceSlice(ints []int) []interface{} {
+	s := make([]interface{}, len(ints))
+	for i, v := range ints {
+		s[i] = v
+	}
+	return s
 }

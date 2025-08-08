@@ -31,7 +31,7 @@ func main() {
 	r.Handle("/post", AuthMiddleware(GetPostDetailsHandler(db), db)).Methods("GET")
 	r.Handle("/comment", AuthMiddleware(CreateCommentHandler(db), db)).Methods("POST")
 	r.Handle("/users", AuthMiddleware(GetAllUsersHandler(db), db)).Methods("GET")
-
+	r.Handle("/categories", AuthMiddleware(GetCategoriesHandler(db), db)).Methods("GET")
 	// Serve static files
 	fs := http.FileServer(http.Dir("./static"))
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
