@@ -6,6 +6,9 @@ let postOffset = 0
 const postLimit = 5
 let allUsers = []
 let notificationTimeout;
+let typingTimer = null
+let isCurrentlyTyping = false
+let typingUsers = new Map() // Map of userUUID -> {nickname, isTyping}
 
 
 // SPA View Switcher
@@ -336,9 +339,26 @@ function connectWebSocket() {
       if (data.type === "user_list") {
         console.log("Received user list update");
         renderOnlineUsers(data.users)
+      } else if (data.type === "typing_start") {
+        console.log("User started typing:", data.nickname);
+        // Only show typing indicator if it's from the current chat partner
+        if (data.from === chatWith) {
+          typingUsers.set(data.from, { nickname: data.nickname, isTyping: true });
+          showTypingIndicator(data.nickname);
+        }
+      } else if (data.type === "typing_stop") {
+        console.log("User stopped typing:", data.nickname);
+        // Only hide typing indicator if it's from the current chat partner
+        if (data.from === chatWith) {
+          typingUsers.delete(data.from);
+          hideTypingIndicator();
+        }
       } else {
         console.log("Received chat message");
-        // This is a chat message
+        // This is a chat message - hide typing indicator when message arrives
+        if (data.from === chatWith) {
+          hideTypingIndicator();
+        }
         renderIncomingMessage(data)
       }
     } catch (error) {
@@ -412,6 +432,10 @@ function openChat(userUUID) {
   loadingDiv.style.padding = "20px";
   loadingDiv.classList.add('loading-indicator'); // Add class for easy removal
   chatHistory.appendChild(loadingDiv);
+
+  hideTypingIndicator();
+  clearTimeout(typingTimer);
+  handleTypingStop();
 
   // Load messages
   loadMessages();
@@ -705,9 +729,64 @@ function setupMessageInput() {
     return;
   }
 
+  // Handle typing events
+  // NEW CODE - More responsive typing detection:
+  chatInput.addEventListener("input", function (e) {
+    if (!chatWith) return;
+
+    const content = chatInput.value.trim();
+
+    if (content.length > 0) {
+      handleTypingStart();
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        handleTypingStop();
+      }, 300); // Reduced to 300ms for immediate response
+    } else {
+      clearTimeout(typingTimer);
+      handleTypingStop();
+    }
+  });
+
+  // ADD THIS NEW EVENT LISTENER after the input listener:
+  chatInput.addEventListener("keyup", function (e) {
+    if (!chatWith) return;
+
+    clearTimeout(typingTimer);
+    const content = chatInput.value.trim();
+
+    if (content.length > 0) {
+      typingTimer = setTimeout(() => {
+        handleTypingStop();
+      }, 300); // Very short delay - almost immediate
+    } else {
+      handleTypingStop();
+    }
+  });
+
+  // Handle focus events
+  chatInput.addEventListener("focus", function (e) {
+    if (!chatWith) return;
+    // Optional: Could send typing_start on focus if there's content
+    const content = chatInput.value.trim();
+    if (content.length > 0) {
+      handleTypingStart();
+    }
+  });
+
+  chatInput.addEventListener("blur", function (e) {
+    // User left the input field, stop typing
+    clearTimeout(typingTimer);
+    handleTypingStop();
+  });
+
   chatInput.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
-      e.preventDefault(); // Prevent form submission if inside a form
+      e.preventDefault();
+
+      // Clear typing status immediately when sending message
+      clearTimeout(typingTimer);
+      handleTypingStop();
 
       const content = chatInput.value.trim()
       if (!content) {
@@ -745,7 +824,6 @@ function setupMessageInput() {
     }
   })
 }
-
 // Call this function when the chat UI is shown
 function initializeChatInput() {
   setupMessageInput();
@@ -931,3 +1009,70 @@ function resetPostFeed() {
   loadPostFeed()
 }
 
+// Typing functionality
+function handleTypingStart() {
+  if (!chatWith || isCurrentlyTyping) return;
+
+  isCurrentlyTyping = true;
+
+  const typingMsg = {
+    type: "typing_start",
+    to: chatWith
+  };
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(typingMsg));
+    console.log("Sent typing_start to", chatWith);
+  }
+}
+
+function handleTypingStop() {
+  if (!chatWith || !isCurrentlyTyping) return;
+
+  isCurrentlyTyping = false;
+
+  const typingMsg = {
+    type: "typing_stop",
+    to: chatWith
+  };
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(typingMsg));
+    console.log("Sent typing_stop to", chatWith);
+  }
+}
+
+function showTypingIndicator(nickname) {
+  const chatHistory = document.getElementById("chat-history");
+  if (!chatHistory) return;
+
+  // Remove any existing typing indicators
+  const existingIndicator = chatHistory.querySelector('.typing-indicator');
+  if (existingIndicator) {
+    existingIndicator.remove();
+  }
+
+  // Create new typing indicator
+  const typingDiv = document.createElement("div");
+  typingDiv.classList.add("typing-indicator");
+  typingDiv.innerHTML = `
+        <div class="typing-message">
+            <span class="typing-user">${nickname}</span> is typing
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    `;
+
+  chatHistory.appendChild(typingDiv);
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function hideTypingIndicator() {
+  const typingIndicator = document.querySelector('.typing-indicator');
+  if (typingIndicator) {
+    typingIndicator.remove();
+  }
+}

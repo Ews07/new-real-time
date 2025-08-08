@@ -384,12 +384,14 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  transform: translateX(120%); /* Start off-screen */
+  transform: translateX(120%);
+  /* Start off-screen */
   transition: transform 0.4s ease-in-out;
 }
 
 #notification-popup.visible {
-  transform: translateX(0); /* Slide in to view */
+  transform: translateX(0);
+  /* Slide in to view */
 }
 
 #notification-content {
@@ -423,5 +425,92 @@ button:hover {
 
 #notification-close:hover {
   color: #333;
-  background-color: transparent; /* Override default button hover */
+  background-color: transparent;
+  /* Override default button hover */
 }
+
+/* Typing indicator styles */
+.typing-indicator {
+  padding: 10px;
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.typing-message {
+  background-color: #f0f0f0;
+  padding: 8px 12px;
+  border-radius: 18px;
+  border-bottom-left-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+.typing-user {
+  font-weight: bold;
+  color: #0077ff;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  background-color: #999;
+  border-radius: 50%;
+  animation: typing-animation 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-animation {
+
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+/* Alternative pulsing animation */
+@keyframes typing-pulse {
+
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+
+  30% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* You can switch between animations by changing the animation property */
+/* .typing-dots span { animation: typing-pulse 1.4s infinite ease-in-out; } */

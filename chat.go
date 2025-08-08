@@ -17,6 +17,7 @@ var (
 	clients     = make(map[string]*Client)       // key = user UUID
 	broadcast   = make(chan Message)             // channel for incoming messages
 	onlineUsers = make(map[string]*UserPresence) // key = userUUID
+	typingUsers = make(map[string]*TypingStatus) // key = userUUID
 )
 
 type Client struct {
@@ -35,7 +36,7 @@ type Message struct {
 type UserPresence struct {
 	UserUUID        string    `json:"user_uuid"`
 	Nickname        string    `json:"nickname"`
-	LastMessage     string    `json:"last_message"` // preview of last message content
+	LastMessage     string    `json:"last_message"`      // preview of last message content
 	LastMessageTime time.Time `json:"last_message_time"` // timestamp for sorting
 	IsOnline        bool      `json:"is_online"`
 }
@@ -46,6 +47,21 @@ type MessageBroadcast struct {
 	Content      string `json:"content"`
 	SentAt       string `json:"sent_at"`
 	FromNickname string `json:"from_nickname"`
+}
+
+type TypingMessage struct {
+	Type     string `json:"type"`     // "typing_start" or "typing_stop"
+	From     string `json:"from"`     // sender UUID
+	To       string `json:"to"`       // receiver UUID
+	Nickname string `json:"nickname"` // sender's nickname
+}
+
+type TypingStatus struct {
+	UserUUID string    `json:"user_uuid"`
+	IsTyping bool      `json:"is_typing"`
+	Nickname string    `json:"nickname"`
+	TypingTo string    `json:"typing_to"`
+	LastSeen time.Time `json:"last_seen"`
 }
 
 // MODIFIED: handleMessages is now much simpler.
@@ -93,43 +109,42 @@ func handleMessages(db *sql.DB) {
 	}
 }
 
-
 // NEW HELPER FUNCTION: Generates a contextual user list for a specific user.
 func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) {
-    users := []UserPresence{}
-    
-    // Iterate over a copy of the keys to avoid race conditions if the map is modified elsewhere
-    userUUIDs := make([]string, 0, len(onlineUsers))
-    for k := range onlineUsers {
-        userUUIDs = append(userUUIDs, k)
-    }
+	users := []UserPresence{}
 
-    for _, otherUserUUID := range userUUIDs {
-        // We don't need to show the viewer themselves in the list.
-        if otherUserUUID == viewerUUID {
-            continue
-        }
-        
-        presenceInfo, ok := onlineUsers[otherUserUUID]
-        if !ok {
-            continue // Should not happen, but safe to check
-        }
-        
-        // Get the last message specifically between the viewer and this other user
-        lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUserUUID)
-        
-        // Create a new UserPresence struct with the correct contextual data
-        contextualPresence := UserPresence{
-            UserUUID:        presenceInfo.UserUUID,
-            Nickname:        presenceInfo.Nickname,
-            IsOnline:        presenceInfo.IsOnline,
-            LastMessage:     lastMsg,
-            LastMessageTime: lastTime,
-        }
-        users = append(users, contextualPresence)
-    }
+	// Iterate over a copy of the keys to avoid race conditions if the map is modified elsewhere
+	userUUIDs := make([]string, 0, len(onlineUsers))
+	for k := range onlineUsers {
+		userUUIDs = append(userUUIDs, k)
+	}
 
-    // Sort the personalized list
+	for _, otherUserUUID := range userUUIDs {
+		// We don't need to show the viewer themselves in the list.
+		if otherUserUUID == viewerUUID {
+			continue
+		}
+
+		presenceInfo, ok := onlineUsers[otherUserUUID]
+		if !ok {
+			continue // Should not happen, but safe to check
+		}
+
+		// Get the last message specifically between the viewer and this other user
+		lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUserUUID)
+
+		// Create a new UserPresence struct with the correct contextual data
+		contextualPresence := UserPresence{
+			UserUUID:        presenceInfo.UserUUID,
+			Nickname:        presenceInfo.Nickname,
+			IsOnline:        presenceInfo.IsOnline,
+			LastMessage:     lastMsg,
+			LastMessageTime: lastTime,
+		}
+		users = append(users, contextualPresence)
+	}
+
+	// Sort the personalized list
 	sort.Slice(users, func(i, j int) bool {
 		userA := users[i]
 		userB := users[j]
@@ -146,9 +161,8 @@ func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) 
 		return userA.Nickname < userB.Nickname
 	})
 
-    return users, nil
+	return users, nil
 }
-
 
 // MODIFIED FUNCTION: Renamed from sendOnlineUsersToAll and logic changed
 func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
@@ -177,7 +191,6 @@ func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
 	}
 }
 
-
 // getLastMessageBetweenUsers gets the most recent message between current user and another user
 func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.Time) {
 	query := `
@@ -202,9 +215,8 @@ func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.T
 // --- NO CHANGE NEEDED for loadUserPresenceFromDB ---
 // This function already loads contextual data correctly for the connecting user.
 func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
-    // ... function content is correct and remains the same
+	// ... function content is correct and remains the same
 }
-
 
 // MODIFIED: This function now sends personalized lists to ALL connected clients.
 func sendOnlineUsersToAllConnected(db *sql.DB) {
@@ -226,7 +238,7 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 			log.Println("Error marshaling user list for global update:", err)
 			continue
 		}
-		
+
 		select {
 		case client.Send <- encoded:
 		default:
@@ -234,7 +246,6 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 		}
 	}
 }
-
 
 // MODIFIED: readPump and writePump need to pass the *sql.DB to sendOnlineUsersToAllConnected
 func readPump(db *sql.DB, client *Client) {
@@ -244,36 +255,74 @@ func readPump(db *sql.DB, client *Client) {
 		if u, ok := onlineUsers[client.UserUUID]; ok {
 			u.IsOnline = false
 		}
-		// Notify all users that this user went offline
-		sendOnlineUsersToAllConnected(db) // Pass db handle
+		// Clean up typing status when user disconnects
+		delete(typingUsers, client.UserUUID)
+		// Notify all users that this user went offline and stopped typing
+		sendOnlineUsersToAllConnected(db)
 	}()
 
 	for {
-		var msg Message
-		err := client.Conn.ReadJSON(&msg)
+		// Read raw JSON message
+		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
 			log.Println("read error:", err)
 			break
 		}
 
-		msg.From = client.UserUUID
-		msg.SentAt = time.Now().Format(time.RFC3339)
-
-		log.Printf("Received message: From=%s, To=%s, Content=%s", msg.From, msg.To, msg.Content)
-
-		// Save to database
-		err = SaveMessage(db, uuid.New().String(), msg.From, msg.To, msg.Content, time.Now())
+		// Parse the raw message to determine its type
+		var baseMsg map[string]interface{}
+		err = json.Unmarshal(message, &baseMsg)
 		if err != nil {
-			log.Printf("Failed to save message: %v", err)
-		} else {
-			log.Printf("Message saved successfully")
+			log.Println("JSON unmarshal error:", err)
+			continue
 		}
 
-		// Send to broadcast channel
-		broadcast <- msg
+		msgType, hasType := baseMsg["type"].(string)
+
+		if hasType && (msgType == "typing_start" || msgType == "typing_stop") {
+			// Handle typing message
+			var typingMsg TypingMessage
+			err = json.Unmarshal(message, &typingMsg)
+			if err != nil {
+				log.Println("typing message unmarshal error:", err)
+				continue
+			}
+
+			typingMsg.From = client.UserUUID
+
+			// Get sender's nickname
+			if sender, ok := onlineUsers[client.UserUUID]; ok {
+				typingMsg.Nickname = sender.Nickname
+			}
+
+			handleTypingMessage(typingMsg)
+		} else {
+			// Handle regular chat message
+			var msg Message
+			err = json.Unmarshal(message, &msg)
+			if err != nil {
+				log.Println("chat message unmarshal error:", err)
+				continue
+			}
+
+			msg.From = client.UserUUID
+			msg.SentAt = time.Now().Format(time.RFC3339)
+
+			log.Printf("Received message: From=%s, To=%s, Content=%s", msg.From, msg.To, msg.Content)
+
+			// Save to database
+			err = SaveMessage(db, uuid.New().String(), msg.From, msg.To, msg.Content, time.Now())
+			if err != nil {
+				log.Printf("Failed to save message: %v", err)
+			} else {
+				log.Printf("Message saved successfully")
+			}
+
+			// Send to broadcast channel
+			broadcast <- msg
+		}
 	}
 }
-
 func writePump(client *Client) {
 	for {
 		msg, ok := <-client.Send
@@ -281,6 +330,55 @@ func writePump(client *Client) {
 			return
 		}
 		client.Conn.WriteMessage(websocket.TextMessage, msg)
+	}
+}
+
+// handleTypingMessage processes typing start/stop messages
+func handleTypingMessage(msg TypingMessage) {
+	log.Printf("Handling typing message: %s from %s to %s", msg.Type, msg.Nickname, msg.To)
+
+	if msg.Type == "typing_start" {
+		typingUsers[msg.From] = &TypingStatus{
+			UserUUID: msg.From,
+			IsTyping: true,
+			Nickname: msg.Nickname,
+			TypingTo: msg.To,
+			LastSeen: time.Now(),
+		}
+	} else if msg.Type == "typing_stop" {
+		delete(typingUsers, msg.From)
+	}
+
+	// Send typing status to the target user
+	if targetClient, ok := clients[msg.To]; ok {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			log.Println("Error marshaling typing message:", err)
+			return
+		}
+
+		select {
+		case targetClient.Send <- data:
+			log.Printf("Sent typing status to %s", msg.To)
+		default:
+			log.Printf("Failed to send typing status to %s (channel blocked)", msg.To)
+		}
+	}
+}
+
+// cleanupOldTypingStatus removes stale typing statuses (optional, for cleanup)
+func cleanupOldTypingStatus() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		for userUUID, status := range typingUsers {
+			if now.Sub(status.LastSeen) > 15*time.Second {
+				log.Printf("Cleaning up stale typing status for user %s", userUUID)
+				delete(typingUsers, userUUID)
+			}
+		}
 	}
 }
 

@@ -43,6 +43,7 @@ func main() {
 
 	// Start server
 	go handleMessages(db)
+	go cleanupOldTypingStatus() // Add this line
 	log.Println("Starting server on http://localhost:8080")
 	err = http.ListenAndServe(":8080", r)
 	if err != nil {
