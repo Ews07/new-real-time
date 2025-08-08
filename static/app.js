@@ -195,7 +195,7 @@ window.addEventListener("DOMContentLoaded", () => {
   console.log("Application initialization complete");
 })
 
-function showCustomNotification(title, message) {
+function showCustomNotification(title, message, senderUUID = null) {
   const notificationPopup = document.getElementById('notification-popup');
   const notificationTitle = document.getElementById('notification-title');
   const notificationMessage = document.getElementById('notification-message');
@@ -205,21 +205,77 @@ function showCustomNotification(title, message) {
     return;
   }
 
-  // Populate the notification with the new message info
-  notificationTitle.textContent = title;
-  notificationMessage.textContent = message;
-
-  // Make it visible by adding the 'visible' class
-  notificationPopup.classList.add('visible');
-
-  // If a notification is already showing, reset its hide timer
+  // Clear any existing timeout
   if (notificationTimeout) {
     clearTimeout(notificationTimeout);
   }
 
+  // Remove any existing click listeners by cloning the element
+  const newNotificationPopup = notificationPopup.cloneNode(true);
+  notificationPopup.parentNode.replaceChild(newNotificationPopup, notificationPopup);
+
+  // Get the new elements after replacement
+  const newNotificationTitle = newNotificationPopup.querySelector('#notification-title');
+  const newNotificationMessage = newNotificationPopup.querySelector('#notification-message');
+  const newCloseBtn = newNotificationPopup.querySelector('#notification-close');
+
+  // Populate the notification with the new message info
+  newNotificationTitle.textContent = title;
+  newNotificationMessage.textContent = message;
+
+  // Always re-attach the close button listener
+  if (newCloseBtn) {
+    newCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent any other click handlers from firing
+      newNotificationPopup.classList.remove('visible');
+      if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+      }
+    });
+  }
+
+  // Make the notification clickable if we have a sender UUID
+  if (senderUUID) {
+    newNotificationPopup.style.cursor = 'pointer';
+
+    // Add click listener to the notification content area
+    newNotificationPopup.addEventListener('click', (e) => {
+      // Don't trigger if they clicked the close button
+      if (e.target.id === 'notification-close' || e.target.closest('#notification-close')) {
+        return;
+      }
+
+      console.log(`Opening chat with ${senderUUID} from notification click`);
+
+      // Hide the notification
+      newNotificationPopup.classList.remove('visible');
+
+      // Clear timeout since we're manually hiding it
+      if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+      }
+
+      // Open the chat with the sender
+      openChat(senderUUID);
+
+      // Optional: Focus the chat input after opening
+      setTimeout(() => {
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+          chatInput.focus();
+        }
+      }, 100);
+    });
+  } else {
+    newNotificationPopup.style.cursor = 'default';
+  }
+
+  // Make it visible by adding the 'visible' class
+  newNotificationPopup.classList.add('visible');
+
   // Set a timer to automatically hide the notification after 5 seconds
   notificationTimeout = setTimeout(() => {
-    notificationPopup.classList.remove('visible');
+    newNotificationPopup.classList.remove('visible');
   }, 5000);
 }
 
@@ -397,6 +453,13 @@ function openChat(userUUID) {
     return;
   }
 
+  // Remove unread indicator when opening a chat
+  const userList = document.getElementById("all-users");
+  const userItem = userList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  if (userItem) {
+    userItem.classList.remove('has-unread');
+  }
+
   // Highlight active user in the list
   document.querySelectorAll('.user-item').forEach(item => {
     item.classList.remove('active');
@@ -440,6 +503,7 @@ function openChat(userUUID) {
   // Load messages
   loadMessages();
 }
+
 function loadMessages() {
   if (!chatWith) return;
 
@@ -584,21 +648,12 @@ function renderIncomingMessage(msg) {
     // 3b. If the chat with the sender is NOT the one that's currently open, show the pop-up notification.
     // This prevents a pop-up from appearing for a conversation you're actively viewing.
     if (!isRelevantToCurrentChat) {
-      showCustomNotification(`New message from ${msg.from_nickname}`, msg.content);
+      // Pass the sender UUID so the notification becomes clickable
+      showCustomNotification(`New message from ${msg.from_nickname}`, msg.content, msg.from);
     }
   }
 }
 
-// function showMessageNotification(msg) {
-//   // Simple notification - you can make this more sophisticated
-//   alert(`New message from ${msg.from_nickname}: ${msg.content}`);
-
-//   // You could add a visual notification here, like:
-//   // - A badge next to the user's name
-//   // - A toast notification
-//   // - Sound notification
-//   // For now, just console log
-// }
 
 // Update online status and re-render
 function renderOnlineUsers(users) {
