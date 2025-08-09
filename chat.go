@@ -92,12 +92,27 @@ func handleMessages(db *sql.DB) {
 
 		// If receiver is online, send the message directly.
 		if client, ok := clients[msg.To]; ok {
+			log.Println("------------------msg.To-------------------")
 			client.Send <- data
 		}
 
 		// Send back to sender as confirmation.
 		if sender, ok := clients[msg.From]; ok {
+			log.Println("------------------msg.From-------------------")
 			sender.Send <- data
+		}
+
+		if _, ok := onlineUsers[msg.To]; !ok {
+			// fetch nickname from DB
+			var nickname string
+			err := db.QueryRow("SELECT nickname FROM users WHERE uuid = ?", msg.To).Scan(&nickname)
+			if err == nil {
+				onlineUsers[msg.To] = &UserPresence{
+					UserUUID: msg.To,
+					Nickname: nickname,
+					IsOnline: false,
+				}
+			}
 		}
 
 		// --- REMOVED ---
@@ -111,58 +126,68 @@ func handleMessages(db *sql.DB) {
 
 // NEW HELPER FUNCTION: Generates a contextual user list for a specific user.
 func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) {
-	users := []UserPresence{}
+    users := []UserPresence{}
 
-	// Iterate over a copy of the keys to avoid race conditions if the map is modified elsewhere
-	userUUIDs := make([]string, 0, len(onlineUsers))
-	for k := range onlineUsers {
-		userUUIDs = append(userUUIDs, k)
-	}
+    // 1️⃣ Fetch all users who are either:
+    //    - currently online
+    //    - OR have had a conversation with the viewer
+    rows, err := db.Query(`
+        SELECT DISTINCT u.uuid, u.nickname
+        FROM users u
+        LEFT JOIN private_messages m
+            ON (u.uuid = m.sender_uuid AND m.receiver_uuid = ?)
+            OR (u.uuid = m.receiver_uuid AND m.sender_uuid = ?)
+        WHERE u.uuid != ?
+    `, viewerUUID, viewerUUID, viewerUUID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
 
-	for _, otherUserUUID := range userUUIDs {
-		// We don't need to show the viewer themselves in the list.
-		if otherUserUUID == viewerUUID {
-			continue
-		}
+    for rows.Next() {
+        var otherUUID, nickname string
+        if err := rows.Scan(&otherUUID, &nickname); err != nil {
+            continue
+        }
 
-		presenceInfo, ok := onlineUsers[otherUserUUID]
-		if !ok {
-			continue // Should not happen, but safe to check
-		}
+        // 2️⃣ Determine if they are online right now
+        isOnline := false
+        if presence, ok := onlineUsers[otherUUID]; ok && presence.IsOnline {
+            isOnline = true
+        }
 
-		// Get the last message specifically between the viewer and this other user
-		lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUserUUID)
+        // 3️⃣ Get the last message between viewer and this user
+        lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUUID)
 
-		// Create a new UserPresence struct with the correct contextual data
-		contextualPresence := UserPresence{
-			UserUUID:        presenceInfo.UserUUID,
-			Nickname:        presenceInfo.Nickname,
-			IsOnline:        presenceInfo.IsOnline,
-			LastMessage:     lastMsg,
-			LastMessageTime: lastTime,
-		}
-		users = append(users, contextualPresence)
-	}
+        // 4️⃣ Build the presence entry
+        users = append(users, UserPresence{
+            UserUUID:        otherUUID,
+            Nickname:        nickname,
+            IsOnline:        isOnline,
+            LastMessage:     lastMsg,
+            LastMessageTime: lastTime,
+        })
+    }
 
-	// Sort the personalized list
-	sort.Slice(users, func(i, j int) bool {
-		userA := users[i]
-		userB := users[j]
+    // 5️⃣ Sort by last message time desc, then alphabetically
+    sort.Slice(users, func(i, j int) bool {
+        a := users[i]
+        b := users[j]
+        if !a.LastMessageTime.IsZero() && !b.LastMessageTime.IsZero() {
+            return a.LastMessageTime.After(b.LastMessageTime)
+        }
+        if !a.LastMessageTime.IsZero() {
+            return true
+        }
+        if !b.LastMessageTime.IsZero() {
+            return false
+        }
+        return a.Nickname < b.Nickname
+    })
 
-		if !userA.LastMessageTime.IsZero() && !userB.LastMessageTime.IsZero() {
-			return userA.LastMessageTime.After(userB.LastMessageTime)
-		}
-		if !userA.LastMessageTime.IsZero() {
-			return true
-		}
-		if !userB.LastMessageTime.IsZero() {
-			return false
-		}
-		return userA.Nickname < userB.Nickname
-	})
-
-	return users, nil
+    return users, nil
 }
+
 
 // MODIFIED FUNCTION: Renamed from sendOnlineUsersToAll and logic changed
 func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
@@ -216,6 +241,59 @@ func getLastMessageBetweenUsers(db *sql.DB, userA, userB string) (string, time.T
 // This function already loads contextual data correctly for the connecting user.
 func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
 	// ... function content is correct and remains the same
+		log.Printf("Loading user presence data for user: %s", userUUID)
+
+	// Get all other users to populate their presence data
+	rows, err := db.Query(`SELECT uuid, nickname FROM users WHERE uuid != ?`, userUUID)
+	if err != nil {
+		log.Printf("Error querying users: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var otherUserUUID, nickname string
+		if err := rows.Scan(&otherUserUUID, &nickname); err != nil {
+			log.Printf("Error scanning user row: %v", err)
+			continue
+		}
+
+		// Get last message between current user and this other user
+		lastMsg, lastMsgTime := getLastMessageBetweenUsers(db, userUUID, otherUserUUID)
+
+		log.Printf("Processing user %s (%s): lastMsg='%s', lastTime=%v",
+			otherUserUUID, nickname, lastMsg, lastMsgTime)
+
+		// Always update or create the user presence data
+		if existingUser, exists := onlineUsers[otherUserUUID]; exists {
+			// Update existing user's message data but preserve online status
+			log.Printf("Updating existing user %s: was online=%v", nickname, existingUser.IsOnline)
+
+			existingUser.Nickname = nickname
+			existingUser.LastMessage = lastMsg
+			existingUser.LastMessageTime = lastMsgTime
+			// Keep the existing IsOnline status - don't change it!
+
+		} else {
+			// Add new user (they're offline until they connect)
+			log.Printf("Adding new offline user: %s", nickname)
+
+			onlineUsers[otherUserUUID] = &UserPresence{
+				UserUUID:        otherUserUUID,
+				Nickname:        nickname,
+				LastMessage:     lastMsg,
+				LastMessageTime: lastMsgTime,
+				IsOnline:        false, // They're offline until they connect
+			}
+		}
+	}
+
+	// Check for any errors from iterating over rows
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating over user rows: %v", err)
+	}
+
+	log.Printf("Completed loading user presence data. Total users in map: %d", len(onlineUsers))
 }
 
 // MODIFIED: This function now sends personalized lists to ALL connected clients.
