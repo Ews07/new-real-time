@@ -1035,9 +1035,12 @@ function loadPostFeed() {
           <small>${new Date(p.created_at).toLocaleString()}</small><br>
           <small>Categories: ${p.categories ? p.categories.join(', ') : 'None'}</small>
         `;
-        div.onclick = () => openPostView(p.uuid);
+        div.addEventListener('click', () => {
+          console.log("Opening post:", p.uuid);
+          openPostView(p.uuid);
+        });
+
         feed.appendChild(div);
-        console.log("feed", feed);
       });
 
       if (posts.length < postLimit) {
@@ -1056,38 +1059,132 @@ function loadPostFeed() {
 let currentPostUUID = ""
 
 function openPostView(uuid) {
-  currentPostUUID = uuid
+  console.log(`Attempting to open post: ${uuid}`);
+  currentPostUUID = uuid;
+  const modal = document.getElementById('post-modal');
 
-  fetch(`/post?uuid=${uuid}`, { credentials: "include" })
-    .then(res => res.json())
-    .then(data => {
-      document.getElementById("modal-post-author").textContent = data.nickname;
-      document.getElementById("modal-post-timestamp").textContent = new Date(data.created_at).toLocaleString();
-      document.getElementById("modal-post-title").textContent = data.title;
-      document.getElementById("modal-post-content").textContent = data.content;
+  if (!modal) {
+    console.error('Post modal element not found');
+    return;
+  }
 
-      const commentsDiv = document.getElementById("modal-comments-list")
-      commentsDiv.innerHTML = ""
-      data.comments.forEach(c => {
-        const d = document.createElement("div")
-        d.className = "comment-item";
-        d.innerHTML = `
-          <div class="comment-body">
-            <div class="comment-author">${c.author}</div>
-            <div class="comment-content">${c.content}</div>
-          </div>
-        `;
-        commentsDiv.appendChild(d);
-      })
-      postModal.classList.remove("hidden");
-      document.body.classList.add("modal-open");
+  // Show loading state
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="loading">Loading post...</div>
+    </div>
+  `;
+  modal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+
+  fetch(`/post?uuid=${uuid}`, {
+    method: "GET",
+    credentials: "include"
+  })
+    .then(res => {
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      return res.json();
     })
+    .then(data => {
+      console.log("Post data received:", data);
+
+      if (!data || typeof data !== 'object') {
+        throw new Error("Invalid post data received");
+      }
+
+      // Create modal content
+      const modalContent = `
+        <div class="modal-content">
+          <button class="modal-close-btn" onclick="closePostModal()">&times;</button>
+          <div class="post-item-full">
+            <div class="post-header">
+              <span class="nickname">${data.nickname || 'Unknown'}</span>
+              <span class="timestamp">${data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown date'
+        }</span>
+            </div>
+            <h2>${data.title || 'No title'}</h2>
+            <div class="post-content-full">${data.content || 'No content'}</div>
+          </div>
+          <div class="comments-section">
+            <h4>Comments</h4>
+            <div id="modal-comments-list">
+              ${renderComments(data.comments)}
+            </div>
+            <div class="comment-input-box">
+              <textarea id="comment-text" placeholder="Write a comment..."></textarea>
+              <button id="submit-comment" class="btn btn-primary">Comment</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      modal.innerHTML = modalContent;
+
+      // Add event listener to comment button
+      document.getElementById('submit-comment').addEventListener('click', function () {
+        const content = document.getElementById("comment-text").value.trim();
+        if (!content || !currentPostUUID) {
+          alert("Cannot post empty comment");
+          return;
+        }
+
+        fetch("/comment", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            post_uuid: currentPostUUID,
+            content: content
+          })
+        }).then(res => {
+          if (res.ok) {
+            document.getElementById("comment-text").value = "";
+            openPostView(currentPostUUID); // reload comments
+          } else {
+            res.text().then(alert);
+          }
+        }).catch(err => {
+          console.error("Error posting comment:", err);
+          alert("Failed to post comment");
+        });
+      });
+    })
+    .catch(err => {
+      console.error("Error loading post:", err);
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="error-message">
+            <h3>Error Loading Post</h3>
+            <p>${err.message}</p>
+            <button onclick="closePostModal()">Close</button>
+          </div>
+        </div>
+      `;
+    });
 }
-function closePostModal() {
-  postModal.classList.add("hidden");
-  document.body.classList.remove("modal-open");
+// Helper function to render comments
+function renderComments(comments) {
+  if (!Array.isArray(comments) || comments.length === 0) {
+    return '<div class="no-comments">No comments yet</div>';
+  }
+
+  return comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-body">
+        <div class="comment-author">${c.author || 'Anonymous'}</div>
+        <div class="comment-content">${c.content || ''}</div>
+      </div>
+    </div>
+  `).join('');
 }
 
+function closePostModal() {
+  const postModal = document.getElementById('post-modal');
+  if (postModal) {
+    postModal.classList.add("hidden");
+    document.body.classList.remove("modal-open");
+  }
+}
 function backToFeed() {
   closePostModal()
 }
@@ -1195,10 +1292,11 @@ function submitPost() {
 
 
 function resetPostFeed() {
-  postOffset = 0
-  document.getElementById("post-feed").innerHTML = ""
-  document.getElementById("load-more-btn").style.display = "block"
-  loadPostFeed()
+  postOffset = 0;
+  const feed = document.getElementById("post-feed");
+  if (feed) feed.innerHTML = "";
+  document.getElementById("load-more-btn").style.display = "block";
+  loadPostFeed();
 }
 
 // Typing functionality

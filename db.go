@@ -258,9 +258,37 @@ func LoadAllPosts(db *sql.DB) ([]Post, error) {
 		if err != nil {
 			continue
 		}
+
+		// FIXED: Load categories for each post
+		categories, _ := GetPostCategories(db, p.UUID)
+		p.Categories = categories
+
 		posts = append(posts, p)
 	}
 	return posts, nil
+}
+func GetPostCategories(db *sql.DB, postUUID string) ([]string, error) {
+	query := `
+		SELECT c.name 
+		FROM categories c
+		JOIN post_categories pc ON c.id = pc.category_id
+		JOIN posts p ON p.id = pc.post_id
+		WHERE p.post_uuid = ?
+	`
+	rows, err := db.Query(query, postUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []string
+	for rows.Next() {
+		var category string
+		if err := rows.Scan(&category); err == nil {
+			categories = append(categories, category)
+		}
+	}
+	return categories, nil
 }
 
 type Comment struct {
@@ -277,40 +305,45 @@ type FullPost struct {
 func LoadPostWithComments(db *sql.DB, postUUID string) (*FullPost, error) {
 	post := Post{}
 	err := db.QueryRow(`
-		SELECT posts.post_uuid, title, content, posts.created_at, users.nickname
-		FROM posts
-		JOIN users ON posts.user_uuid = users.uuid
-		WHERE posts.post_uuid = ?
-	`, postUUID).Scan(&post.UUID, &post.Title, &post.Content, &post.CreatedAt, &post.Nickname)
+        SELECT posts.post_uuid, title, content, posts.created_at, users.nickname
+        FROM posts
+        JOIN users ON posts.user_uuid = users.uuid
+        WHERE posts.post_uuid = ?
+    `, postUUID).Scan(&post.UUID, &post.Title, &post.Content, &post.CreatedAt, &post.Nickname)
+
 	if err != nil {
+		log.Printf("Error loading post with UUID %s: %v", postUUID, err)
 		return nil, err
 	}
+
+	// Always initialize Comments slice
+	comments := []Comment{}
 
 	rows, err := db.Query(`
-		SELECT comments.content, users.nickname, comments.created_at
-		FROM comments
-		JOIN users ON comments.user_uuid = users.uuid
-		JOIN posts ON posts.id = comments.post_id
-		WHERE posts.post_uuid = ?
-		ORDER BY comments.created_at ASC
-	`, postUUID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+        SELECT comments.content, users.nickname, comments.created_at
+        FROM comments
+        JOIN users ON comments.user_uuid = users.uuid
+        JOIN posts ON posts.id = comments.post_id
+        WHERE posts.post_uuid = ?
+        ORDER BY comments.created_at ASC
+    `, postUUID)
 
-	var comments []Comment
-	for rows.Next() {
-		var c Comment
-		err := rows.Scan(&c.Content, &c.Author, &c.CreatedAt)
-		if err != nil {
-			continue
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var c Comment
+			if err := rows.Scan(&c.Content, &c.Author, &c.CreatedAt); err == nil {
+				comments = append(comments, c)
+			}
 		}
-		comments = append(comments, c)
+	} else {
+		log.Printf("Error querying comments: %v", err)
 	}
 
-	log.Println("\n\n\n", post, "\n\n\n", comments)
-	return &FullPost{Post: post, Comments: comments}, nil
+	return &FullPost{
+		Post:     post,
+		Comments: comments, // Always an array (empty if no comments)
+	}, nil
 }
 
 func InsertComment(db *sql.DB, userUUID, postUUID, content string) error {

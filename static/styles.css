@@ -329,8 +329,10 @@ button:hover {
 #post-container {
   flex: 1;
   min-height: 0;
-  position: relative;
-  z-index: 10;
+  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+
 }
 
 #post-feed {
@@ -338,6 +340,21 @@ button:hover {
   flex-direction: column;
   gap: 10px;
   margin-bottom: 15px;
+  overflow: visible;
+  cursor: pointer;
+  position: relative;
+  z-index: 5;
+  /* Ensure above other elements */
+
+}
+
+#post-feed>.post-item:first-child {
+  margin-top: 5px;
+}
+
+/* Add this new rule to fix the last post */
+#post-feed>.post-item:last-child {
+  margin-bottom: 5px;
 }
 
 .post-item {
@@ -348,15 +365,20 @@ button:hover {
   transition: all 0.3s ease;
   border: 1px solid rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(10px);
-  position: relative;
-  z-index: 100 !important;
+}
+
+#post-feed {
+  pointer-events: none;
+}
+
+.post-item {
+  pointer-events: auto;
 }
 
 .post-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   background: rgba(255, 255, 255, 1);
-  z-index: 15;
 }
 
 .post-item strong {
@@ -663,7 +685,7 @@ button:hover {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1002;
+  z-index: 1003;
   padding: 20px;
   box-sizing: border-box;
   backdrop-filter: blur(5px);
@@ -845,6 +867,11 @@ button:hover {
 
 .post-item {
   animation: fadeIn 0.4s ease-out;
+  cursor: pointer;
+  position: relative;
+  z-index: 5;
+  /* Ensure above other elements */
+
 }
 
 /* Dark mode using class */
@@ -1089,4 +1116,29 @@ body.dark .comment-content {
     right: 2.5vw;
     padding: 10px;
   }
+}
+
+/* Add these new styles */
+.loading {
+  text-align: center;
+  padding: 40px;
+  font-size: 18px;
+  color: #667eea;
+}
+
+.error-message {
+  padding: 20px;
+  text-align: center;
+}
+
+.error-message h3 {
+  color: #e74c3c;
+  margin-bottom: 10px;
+}
+
+.no-comments {
+  text-align: center;
+  padding: 20px;
+  color: #718096;
+  font-style: italic;
 }

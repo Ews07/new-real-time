@@ -502,13 +502,16 @@ func CreateCommentHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if req.PostUUID == "" || strings.TrimSpace(req.Content) == "" {
+		// Add proper validation
+		req.Content = strings.TrimSpace(req.Content)
+		if req.PostUUID == "" || req.Content == "" {
 			http.Error(w, "Missing comment content or post UUID", http.StatusBadRequest)
 			return
 		}
 
 		err := InsertComment(db, userUUID, req.PostUUID, req.Content)
 		if err != nil {
+			log.Printf("Failed to save comment: %v", err)
 			http.Error(w, "Failed to save comment", http.StatusInternalServerError)
 			return
 		}
