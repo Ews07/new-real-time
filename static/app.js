@@ -114,7 +114,18 @@ window.addEventListener("DOMContentLoaded", () => {
   console.log("DOM loaded, initializing application...");
   const notificationPopup = document.getElementById('notification-popup');
   const notificationCloseBtn = document.getElementById('notification-close');
+  const darkModeToggle = document.getElementById('dark-mode-toggle');
+  if (darkModeToggle) {
+    // Load saved preference
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+    }
 
+    darkModeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('darkMode', document.body.classList.contains('dark'));
+    });
+  }
   if (notificationCloseBtn && notificationPopup) {
     notificationCloseBtn.addEventListener('click', () => {
       notificationPopup.classList.remove('visible');
