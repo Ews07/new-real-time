@@ -8,6 +8,7 @@
 </head>
 
 <body>
+  <!-- Notification Popup -->
   <div id="notification-popup">
     <div id="notification-content">
       <strong id="notification-title"></strong>
@@ -16,6 +17,7 @@
     <button id="notification-close">&times;</button>
   </div>
 
+  <!-- Chat Popup -->
   <div id="chat-popup">
     <div id="chat-popup-header">
       <h4 id="chat-popup-title">Select a user to chat</h4>
@@ -39,7 +41,7 @@
       <p>Don't have an account? <button id="show-register">Register</button></p>
     </div>
 
-    <!-- REGISTER FORM (hidden by default) -->
+    <!-- REGISTER FORM -->
     <div id="register-section" style="display: none;">
       <h2>Register</h2>
       <form id="register-form">
@@ -61,36 +63,45 @@
     </div>
 
     <!-- MAIN CHAT SECTION -->
-    <div id="chat-section" style="display: none; display: flex; gap: 20px;">
+    <div id="chat-section" style="display: none;">
+      <!-- Category Sidebar -->
+      <div id="category-sidebar">
+        <h3>Categories</h3>
+        <div id="category-filter">
+          <!-- Categories will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Main Content Column -->
+      <div id="main-column">
+        <h2>Welcome to the Forum!</h2>
+
+        <!-- Post Creation -->
+        <button id="create-post-btn">+ Create Post</button>
+        <div id="post-form" style="display: none;">
+          <input type="text" id="post-title" placeholder="Title" />
+          <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
+          <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
+          <button id="submit-post">Post</button>
+        </div>
+
+        <!-- Post Feed -->
+        <div id="post-container">
+          <div id="post-feed"></div>
+          <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
+        </div>
+      </div>
+
       <!-- Users Column -->
       <div id="user-column">
         <button id="logout-btn">Logout</button>
         <h3>All Users</h3>
         <ul id="all-users"></ul>
       </div>
-
-
-      <!-- Center Column for Posts -->
-      <div id="main-column" style="flex-grow: 1;">
-        <h2>Welcome to the Forum!</h2>
-        <button id="create-post-btn">+ Create Post</button>
-        <div id="post-form" style="display: none; margin-top: 10px;">
-          <input type="text" id="post-title" placeholder="Title" />
-          <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
-          <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
-          <button id="submit-post">Post</button>
-        </div>
-        <div id="post-container">
-          <div id="post-feed"></div>
-          <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
-        </div>
-      </div>
     </div>
-
-
   </div>
 
-  <div id="category-filter"></div>
+  <!-- Post Modal -->
   <div id="post-modal" class="modal-overlay hidden">
     <div class="modal-content">
       <button id="modal-close-btn" class="modal-close-btn">&times;</button>
