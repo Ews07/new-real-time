@@ -1057,17 +1057,19 @@ function openPostView(uuid) {
 
       const commentsDiv = document.getElementById("modal-comments-list")
       commentsDiv.innerHTML = ""
-      data.comments.forEach(c => {
-        const d = document.createElement("div")
-        d.className = "comment-item";
-        d.innerHTML = `
+      if (data.comments) {
+        data.comments.forEach(c => {
+          const d = document.createElement("div")
+          d.className = "comment-item";
+          d.innerHTML = `
           <div class="comment-body">
             <div class="comment-author">${c.author}</div>
             <div class="comment-content">${c.content}</div>
           </div>
         `;
-        commentsDiv.appendChild(d);
-      })
+          commentsDiv.appendChild(d);
+        })
+      }
       postModal.classList.remove("hidden");
       document.body.classList.add("modal-open");
     })

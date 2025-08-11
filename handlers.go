@@ -350,6 +350,32 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 		loadUserPresenceFromDB(db, userUUID)
 		log.Printf("User %s presence established, loading other users completed", nickname)
 
+			rows, _ := db.Query(`
+		SELECT DISTINCT CASE
+			WHEN sender_uuid = ? THEN receiver_uuid
+			ELSE sender_uuid
+		END AS other_uuid
+		FROM private_messages
+		WHERE sender_uuid = ? OR receiver_uuid = ?
+	`, userUUID, userUUID, userUUID)
+			defer rows.Close()
+
+			for rows.Next() {
+				var other string
+				if err := rows.Scan(&other); err == nil {
+					if _, ok := onlineUsers[other]; !ok {
+						var nickname string
+						if err := db.QueryRow("SELECT nickname FROM users WHERE uuid = ?", other).Scan(&nickname); err == nil {
+							onlineUsers[other] = &UserPresence{
+								UserUUID: other,
+								Nickname: nickname,
+								IsOnline: false,
+							}
+						}
+					}
+				}
+			}
+
 		sendOnlineUsersToAllConnected(db)
 
 		go writePump(client)
