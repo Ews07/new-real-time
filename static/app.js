@@ -25,7 +25,7 @@ function showChatUI() {
   document.getElementById("register-section").style.display = "none"
   document.getElementById("chat-section").style.display = "block"
   resetPostFeed()
-  fetchAllUsers()
+  // fetchAllUsers()
 
   // Initialize chat input handlers
   initializeChatInput()
@@ -357,7 +357,7 @@ function login() {
           updateWelcomeMessage(data.nickname);
           showChatUI()
           connectWebSocket()
-          fetchAllUsers()
+          // fetchAllUsers()
         })
     })
     .catch(err => {
@@ -392,25 +392,25 @@ function register() {
   })
 }
 
-//Fetch users
-function fetchAllUsers() {
-  fetch("/users", { credentials: "include" })
-    .then(res => res.json())
-    .then(users => {
-      allUsers = users.map(user => ({
-        uuid: user.uuid,
-        nickname: user.nickname,
-        isOnline: user.isOnline || false,
-        lastMessage: "",
-        lastMessageTime: null
-      }))
-      console.log("Fetched all users:", allUsers)
-      updateUserList()
-    })
-    .catch(err => {
-      console.error("Error fetching users:", err)
-    })
-}
+// //Fetch users
+// function fetchAllUsers() {
+//   fetch("/users", { credentials: "include" })
+//     .then(res => res.json())
+//     .then(users => {
+//       allUsers = users.map(user => ({
+//         uuid: user.uuid,
+//         nickname: user.nickname,
+//         isOnline: user.isOnline || false,
+//         lastMessage: "",
+//         lastMessageTime: null
+//       }))
+//       console.log("Fetched all users:", allUsers)
+//       updateUserList()
+//     })
+//     .catch(err => {
+//       console.error("Error fetching users:", err)
+//     })
+// }
 
 // Logout
 function logout() {
@@ -722,7 +722,7 @@ function renderOnlineUsers(users) {
       allUsers[existingUserIndex].isOnline = wsUser.is_online
       allUsers[existingUserIndex].lastMessage = wsUser.last_message || ""
       allUsers[existingUserIndex].lastMessageTime = wsUser.last_message_time
-      console.log(`Updated user ${wsUser.nickname}:`, allUsers[existingUserIndex]);
+      console.log(`Updated user in renderOnline() ${wsUser.nickname}:`, allUsers[existingUserIndex]);
     } else {
       // Add new user if not found
       const newUser = {
@@ -779,6 +779,7 @@ function updateUserList() {
 
     return a.nickname.localeCompare(b.nickname)
   })
+  console.log("users sorted in updatezUsersList()", otherUsers);
 
   otherUsers.forEach(user => {
     const li = document.createElement("li")
@@ -829,7 +830,7 @@ function updateUserList() {
     list.appendChild(li)
   })
 
-  console.log("Updated user list with", otherUsers.length, "users")
+  console.log("Updated user list with in updteUserList()", otherUsers.length, "users")
 }
 function setupMessageInput() {
   const chatInput = document.getElementById("chat-input");
