@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	clients     = make(map[string]*Client)       // key = user UUID
-	broadcast   = make(chan Message)             // channel for incoming messages
-	onlineUsers = make(map[string]*UserPresence) // key = userUUID
-	typingUsers = make(map[string]*TypingStatus) // key = userUUID
+	clients     = make(map[string]*Client)        // key = user UUID
+	broadcast   = make(chan Message)              // channel for incoming messages
+	onlineUsers = make(map[string]*UserPresence)  // key = userUUID
+	typingUsers = make(map[*Client]*TypingStatus) // key = userUUID
 )
 
 type Client struct {
@@ -166,7 +166,6 @@ func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) 
 	return users, nil
 }
 
-
 // MODIFIED FUNCTION: Renamed from sendOnlineUsersToAll and logic changed
 func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
 	// Generate and send the list for the SENDER
@@ -258,8 +257,24 @@ func readPump(db *sql.DB, client *Client) {
 		if u, ok := onlineUsers[client.UserUUID]; ok {
 			u.IsOnline = false
 		}
+
+		// If this client was typing, tell the recipient to stop
+		if status, ok := typingUsers[client]; ok && status.IsTyping {
+			typingStopMsg := TypingMessage{
+				Type:     "typing_stop",
+				From:     status.UserUUID,
+				To:       status.TypingTo,
+				Nickname: status.Nickname,
+			}
+			if targetClient, ok := clients[status.TypingTo]; ok {
+				if data, err := json.Marshal(typingStopMsg); err == nil {
+					targetClient.Send <- data
+				}
+			}
+		}
+
 		// Clean up typing status when user disconnects
-		delete(typingUsers, client.UserUUID)
+		delete(typingUsers, client)
 		// Notify all users that this user went offline and stopped typing
 		sendOnlineUsersToAllConnected(db)
 	}()
@@ -298,7 +313,7 @@ func readPump(db *sql.DB, client *Client) {
 				typingMsg.Nickname = sender.Nickname
 			}
 
-			handleTypingMessage(typingMsg)
+			handleTypingMessage(client, typingMsg)
 		} else {
 			// Handle regular chat message
 			var msg Message
@@ -337,11 +352,11 @@ func writePump(client *Client) {
 }
 
 // handleTypingMessage processes typing start/stop messages
-func handleTypingMessage(msg TypingMessage) {
+func handleTypingMessage(client *Client, msg TypingMessage) {
 	log.Printf("Handling typing message: %s from %s to %s", msg.Type, msg.Nickname, msg.To)
 
 	if msg.Type == "typing_start" {
-		typingUsers[msg.From] = &TypingStatus{
+		typingUsers[client] = &TypingStatus{
 			UserUUID: msg.From,
 			IsTyping: true,
 			Nickname: msg.Nickname,
@@ -349,7 +364,7 @@ func handleTypingMessage(msg TypingMessage) {
 			LastSeen: time.Now(),
 		}
 	} else if msg.Type == "typing_stop" {
-		delete(typingUsers, msg.From)
+		delete(typingUsers, client)
 	}
 
 	// Send typing status to the target user
