@@ -19,13 +19,17 @@ let chatScrollHandlerAttached = false;
 function showLoginUI() {
   document.getElementById("login-section").style.display = "block"
   document.getElementById("register-section").style.display = "none"
-  document.getElementById("chat-section").style.display = "none"
+  document.getElementById("forum-view").style.display = "none"
+  document.getElementById("main-header").style.display = "none"
+  document.getElementById("chat-popup").style.display = "none"
+  document.getElementById("notification-popup").style.display = "none"
 }
 
 function showChatUI() {
   document.getElementById("login-section").style.display = "none"
   document.getElementById("register-section").style.display = "none"
-  document.getElementById("chat-section").style.display = "block"
+  document.getElementById("main-header").style.display = "flex"
+  document.getElementById("forum-view").style.display = "block"
   resetPostFeed()
   // fetchAllUsers()
 
@@ -240,9 +244,11 @@ window.addEventListener("DOMContentLoaded", () => {
 })
 
 function updateWelcomeMessage(nickname) {
-  const welcomeElement = document.querySelector('#main-column h2');
+  const welcomeElement = document.querySelector('#main-header .logo h4');
+  console.log("Welcome msg ==== ", welcomeElement);
+  
   if (welcomeElement) {
-    welcomeElement.textContent = `Welcome to the Forum, ${nickname}!`;
+    welcomeElement.textContent = `${nickname}`;
   }
 }
 
@@ -406,8 +412,8 @@ function register() {
 //         uuid: user.uuid,
 //         nickname: user.nickname,
 //         isOnline: user.isOnline || false,
-//         lastMessage: "",
-//         lastMessageTime: null
+//         lastMessage: user.lastMessage || "",
+//         lastMessageTime: user.lastMessageTime || null
 //       }))
 //       console.log("Fetched all users:", allUsers)
 //       updateUserList()
@@ -732,7 +738,7 @@ function renderOnlineUsers(users) {
       allUsers[existingUserIndex].isOnline = wsUser.is_online
       allUsers[existingUserIndex].lastMessage = wsUser.last_message || ""
       allUsers[existingUserIndex].lastMessageTime = wsUser.last_message_time
-      console.log(`Updated user in renderOnline() ${wsUser.nickname}:`, allUsers[existingUserIndex]);
+      console.log(`Updated user ${wsUser.nickname}:`, allUsers[existingUserIndex]);
     } else {
       // Add new user if not found
       const newUser = {
@@ -789,7 +795,6 @@ function updateUserList() {
 
     return a.nickname.localeCompare(b.nickname)
   })
-  console.log("users sorted in updatezUsersList()", otherUsers);
 
   otherUsers.forEach(user => {
     const li = document.createElement("li")
@@ -840,7 +845,7 @@ function updateUserList() {
     list.appendChild(li)
   })
 
-  console.log("Updated user list with in updteUserList()", otherUsers.length, "users")
+  console.log("Updated user list with", otherUsers.length, "users")
 }
 function setupMessageInput() {
   const chatInput = document.getElementById("chat-input");
@@ -978,7 +983,10 @@ function fetchCategories() {
     .then(res => res.json())
     .then(categories => {
       const categoryFilter = document.getElementById("category-filter");
-      categoryFilter.innerHTML = '<button class="category-btn active" data-category="">All Categories</button>';
+      categoryFilter.innerHTML = `
+        <h4> CATEGORIES</h4 >
+          <button class="category-btn active" data-category="">All Categories</button>
+      `;
 
       categories.forEach(cat => {
         const btn = document.createElement("button");

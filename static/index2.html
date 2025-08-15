@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>Forum Login</title>
+  <title>Forum</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 
@@ -27,9 +27,40 @@
     </div>
   </div>
 
-  <div class="container">
-    <!-- LOGIN FORM -->
-    <div id="login-section">
+  <div id="post-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+      <div class="post-item-full">
+        <div class="post-header">
+          <span id="modal-post-author" class="nickname"></span>
+          <span id="modal-post-timestamp" class="timestamp"></span>
+        </div>
+        <h2 id="modal-post-title"></h2>
+        <div id="modal-post-content" class="post-content-full"></div>
+      </div>
+      <div class="comments-section">
+        <h4>Comments</h4>
+        <div id="modal-comments-list"></div>
+        <div class="comment-input-box">
+          <textarea id="comment-text" placeholder="Write a comment..."></textarea>
+          <button id="submit-comment">Comment</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <header id="main-header">
+    <div class="logo">
+      <h4>CYBER FORUM</h4>
+    </div>
+    <nav class="main-nav">
+      <button id="logout-btn">Logout</button>
+      <button id="toggle-theme-btn">Toggle Light Mode</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div id="login-section" style="display: none;">
       <h2>Login</h2>
       <form id="login-form">
         <input type="text" placeholder="Email or Nickname" id="login-identifier" required />
@@ -38,8 +69,6 @@
       </form>
       <p>Don't have an account? <button id="show-register">Register</button></p>
     </div>
-
-    <!-- REGISTER FORM (hidden by default) -->
     <div id="register-section" style="display: none;">
       <h2>Register</h2>
       <form id="register-form">
@@ -60,58 +89,40 @@
       <p>Already have an account? <button id="show-login">Back to Login</button></p>
     </div>
 
-    <!-- MAIN CHAT SECTION -->
-    <div id="chat-section" style="display: none; display: flex; gap: 20px;">
-      <!-- Users Column -->
-      <div id="user-column">
-        <button id="logout-btn">Logout</button>
-        <h3>All Users</h3>
-        <ul id="all-users"></ul>
+
+    <div id="forum-view">
+      <div class="main-column-header">
+        <h2>Welcome to 01Forum!</h2>
       </div>
 
-
-      <!-- Center Column for Posts -->
-      <div id="main-column" style="flex-grow: 1;">
-        <h2>Welcome to the Forum!</h2>
-        <button id="create-post-btn">+ Create Post</button>
-        <div id="post-form" style="display: none; margin-top: 10px;">
-          <input type="text" id="post-title" placeholder="Title" />
-          <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
-          <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
-          <button id="submit-post">Post</button>
+      <div id="chat-section">
+        
+        <div id="category-filter">
+          <h4>CATEGORIES</h4>
         </div>
-        <div id="post-container">
-          <div id="post-feed"></div>
-          <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
+        <div id="main-column">
+          <div id="post-container">
+            <h4>POSTS</h4>
+            <button id="create-post-btn">+ Create Post</button>
+            <div id="post-form" style="display: none;">
+              <input type="text" id="post-title" placeholder="Title" />
+              <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
+              <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
+              <button id="submit-post">Post</button>
+            </div>
+            <div id="post-feed"></div>
+            <button id="load-more-btn" onclick="loadPostFeed()">Load More</button>
+          </div>
         </div>
-      </div>
-    </div>
 
-
-  </div>
-
-  <div id="category-filter"></div>
-  <div id="post-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-      <button id="modal-close-btn" class="modal-close-btn">&times;</button>
-      <div class="post-item-full">
-        <div class="post-header">
-          <span id="modal-post-author" class="nickname"></span>
-          <span id="modal-post-timestamp" class="timestamp"></span>
-        </div>
-        <h2 id="modal-post-title"></h2>
-        <div id="modal-post-content" class="post-content-full"></div>
-      </div>
-      <div class="comments-section">
-        <h4>Comments</h4>
-        <div id="modal-comments-list"></div>
-        <div class="comment-input-box">
-          <textarea id="comment-text" placeholder="Write a comment..."></textarea>
-          <button id="submit-comment" class="btn btn-primary">Comment</button>
+        <div id="user-column">
+          <h4>ALL USERS</h4>
+          <ul id="all-users">
+          </ul>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <script src="/static/app.js"></script>
 </body>
