@@ -12,6 +12,8 @@ let typingUsers = new Map() // Map of userUUID -> {nickname, isTyping}
 const postModal = document.getElementById('post-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
 let currentCategory = "";
+let isLoadingMessages = false;
+let chatScrollHandlerAttached = false;
 
 // SPA View Switcher
 function showLoginUI() {
@@ -69,6 +71,9 @@ function updateChatPopupTitle(nickname) {
 }
 
 function setupChatScrollHandler() {
+  if (chatScrollHandlerAttached) return; // Prevent duplicate binding
+  chatScrollHandlerAttached = true;
+
   const chatHistory = document.getElementById("chat-history");
   if (!chatHistory) {
     console.error("chat-history element not found for scroll handler");
@@ -78,7 +83,7 @@ function setupChatScrollHandler() {
   let debounceTimer;
 
   chatHistory.addEventListener("scroll", function () {
-    if (chatHistory.scrollTop === 0 && chatWith) {
+    if (chatHistory.scrollTop === 0 && chatWith && !isLoadingMessages) {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         console.log("Loading more messages due to scroll");
@@ -559,17 +564,19 @@ function openChat(userUUID) {
 }
 
 function loadMessages() {
-  if (!chatWith) return;
+  if (!chatWith || isLoadingMessages) return;
+  isLoadingMessages = true; // lock here
 
   console.log(`Loading messages with ${chatWith}, offset: ${messagesOffset}`);
 
   const chatHistory = document.getElementById("chat-history");
   if (!chatHistory) {
     console.error("chat-history element not found");
+    isLoadingMessages = false
     return;
   }
 
-  const shouldScroll = chatHistory.scrollTop === 0;
+  // const shouldScroll = chatHistory.scrollTop === 0;
   const isFirstLoad = messagesOffset === 0;
 
   fetch(`/messages?with=${chatWith}&offset=${messagesOffset}`, {
@@ -665,6 +672,9 @@ function loadMessages() {
       errorDiv.style.textAlign = "center";
       errorDiv.textContent = "Failed to load messages: " + err.message;
       chatHistory.appendChild(errorDiv);
+    })
+    .finally(() => {
+      isLoadingMessages = false; // unlock after done
     });
 }
 // Render new incoming message
