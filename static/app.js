@@ -128,13 +128,21 @@ function createMessageElement(msg) {
   const author = isSelf ? "You" : msg.from_nickname;
 
   div.classList.add(isSelf ? "self" : "other");
+  // html escaping to prevent html injections
+  const safeContent = msg.content
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;")
+    .replace(/\//g, "&#x2F;");
 
   // Format the timestamp
   const time = new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   div.innerHTML = `
     <div class="message-author">${author}</div>
-    <div class="message-content">${msg.content}</div>
+    <div class="message-content">${safeContent}</div>
     <div class="message-time">${time}</div>
   `;
   return div;

@@ -298,7 +298,7 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 
 		clients[userUUID] = client
 
-		log.Printf("User %s (%s) connecting via WebSocket", userUUID, nickname)
+		log.Printf("User %s (%s) connected. Total clients: %d", userUUID, nickname, len(clients))
 
 		// STEP 1: First, establish this user's presence with their current info
 		// Get their last message data from database for their own profile
@@ -431,6 +431,7 @@ func GetMessagesHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Failed to encode messages", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("API: Loading messages between %s and %s with offset %d. Found %d messages.", userUUID, otherUser, offset, len(messages))
 
 		log.Printf("GetMessagesHandler: Successfully returned %d messages", len(messages))
 	}

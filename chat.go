@@ -92,13 +92,13 @@ func handleMessages(db *sql.DB) {
 
 		// If receiver is online, send the message directly.
 		if client, ok := clients[msg.To]; ok {
-			log.Println("------------------msg.To-------------------")
+			log.Printf("BROADCAST: Message from %s to %s. Sending to Websockets.", msg.From, msg.To)
 			client.Send <- data
 		}
 
 		// Send back to sender as confirmation.
 		if sender, ok := clients[msg.From]; ok {
-			log.Println("------------------msg.From-------------------")
+			log.Printf("BROADCAST: Message from %s to %s. Sending to Websockets.", msg.From, msg.To)
 			sender.Send <- data
 		}
 
@@ -108,6 +108,7 @@ func handleMessages(db *sql.DB) {
 
 		// Instead, we now generate and send personalized user lists to the participants.
 		sendPersonalizedUserLists(db, msg.From, msg.To)
+		
 	}
 }
 
@@ -275,6 +276,8 @@ func readPump(db *sql.DB, client *Client) {
 
 		// Clean up typing status when user disconnects
 		delete(typingUsers, client)
+		log.Printf("User %s disconnected. Total clients: %d", client.UserUUID, len(clients))
+
 		// Notify all users that this user went offline and stopped typing
 		sendOnlineUsersToAllConnected(db)
 	}()

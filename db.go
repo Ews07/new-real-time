@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"os"
 	"strings"
@@ -214,10 +215,12 @@ func InsertPostCategories(db *sql.DB, postUUID string, categories []string) erro
 }
 
 func SaveMessage(db *sql.DB, uuid, sender, receiver, content string, createdAt time.Time) error {
+	safeContent := html.EscapeString(content)
+
 	stmt := `
         INSERT INTO private_messages (uuid, sender_uuid, receiver_uuid, content, created_at, sent_at)
         VALUES (?, ?, ?, ?, ?, ?)`
-	_, err := db.Exec(stmt, uuid, sender, receiver, content, createdAt, createdAt)
+	_, err := db.Exec(stmt, uuid, sender, receiver, safeContent, createdAt, createdAt)
 	if err != nil {
 		log.Printf("SaveMessage error: %v", err)
 	} else {
