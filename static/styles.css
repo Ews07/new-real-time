@@ -450,6 +450,11 @@ body.light-mode #toggle-theme-btn::after {
   letter-spacing: -0.02em;
 }
 
+#show-register {
+  margin-top: 5px;
+  margin-right: 20px;
+}
+
 /* Advanced Form Styling */
 form {
   display: flex;
@@ -1024,6 +1029,7 @@ textarea:focus::placeholder {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1223,9 +1229,12 @@ textarea:focus::placeholder {
 }
 
 @keyframes pulseUnread {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: var(--shadow-md);
   }
+
   50% {
     box-shadow: var(--shadow-lg), 0 0 20px rgba(34, 197, 94, 0.2);
   }
@@ -1296,15 +1305,27 @@ textarea:focus::placeholder {
   animation: typingBounce 1.4s ease-in-out infinite both;
 }
 
-.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
-.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
-.typing-dots span:nth-child(3) { animation-delay: 0s; }
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0s;
+}
 
 @keyframes typingBounce {
-  0%, 80%, 100% {
+
+  0%,
+  80%,
+  100% {
     transform: scale(0.8);
     opacity: 0.5;
   }
+
   40% {
     transform: scale(1.2);
     opacity: 1;
@@ -1449,6 +1470,7 @@ textarea:focus::placeholder {
     opacity: 0;
     transform: translateY(-50px) scale(0.9);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -1706,34 +1728,34 @@ textarea:focus::placeholder {
     grid-template-columns: 1fr;
     gap: var(--space-4);
   }
-  
+
   #category-filter,
   #user-column {
     position: static;
     max-height: none;
   }
-  
+
   #chat-popup {
     width: calc(100vw - 40px);
     right: 20px;
     left: 20px;
     height: 70vh;
   }
-  
+
   .modal-content {
     width: 95%;
     max-height: 90vh;
   }
-  
+
   .post-item-full {
     padding: var(--space-6);
     padding-top: var(--space-12);
   }
-  
+
   #modal-post-title {
     font-size: var(--text-3xl);
   }
-  
+
   .main-column-header h2 {
     font-size: var(--text-4xl);
   }
@@ -1743,21 +1765,21 @@ textarea:focus::placeholder {
   .container {
     padding: var(--space-4);
   }
-  
+
   #main-header {
     padding: var(--space-3) var(--space-4);
   }
-  
+
   .logo h4 {
     font-size: var(--text-xl);
   }
-  
+
   #notification-popup {
     width: calc(100vw - 40px);
     right: 20px;
     left: 20px;
   }
-  
+
   .main-column-header h2 {
     font-size: var(--text-3xl);
   }
@@ -1782,6 +1804,7 @@ button {
 
 /* Accessibility Enhancements */
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -1789,7 +1812,7 @@ button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  
+
   body::before {
     animation: none;
   }
@@ -1813,7 +1836,7 @@ select:focus-visible,
     --border-secondary: rgba(255, 255, 255, 0.5);
     --text-muted: #a0a0a0;
   }
-  
+
   body.light-mode {
     --border-primary: rgba(0, 0, 0, 0.3);
     --border-secondary: rgba(0, 0, 0, 0.5);
@@ -1822,6 +1845,7 @@ select:focus-visible,
 
 /* Print Styles */
 @media print {
+
   #chat-popup,
   #notification-popup,
   .modal-overlay,
@@ -1830,12 +1854,12 @@ select:focus-visible,
   #user-column {
     display: none !important;
   }
-  
+
   body {
     background: white !important;
     color: black !important;
   }
-  
+
   .post-item {
     background: white !important;
     border: 1px solid #ccc !important;

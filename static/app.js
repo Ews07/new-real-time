@@ -39,7 +39,29 @@ function showChatUI() {
   // Set up scroll event for loading more messages
   setupChatScrollHandler()
   fetchCategories()
+  populateCategoriesSelector()
+
 }
+
+function populateCategoriesSelector() {
+  fetch("/categories", { credentials: "include" })
+    .then(res => res.json())
+    .then(categories => {
+      const select = document.getElementById("post-categories-select");
+      select.innerHTML = ""; // Clear existing options
+      categories.forEach(cat => {
+        const option = document.createElement("option");
+        option.value = cat;
+        option.textContent = cat;
+        select.appendChild(option);
+      });
+    })
+    .catch(err => {
+      console.error("Error populating categories selector:", err);
+    });
+}
+
+
 function showChatPopup() {
   const chatPopup = document.getElementById("chat-popup");
   chatPopup.classList.add("visible");
@@ -1173,17 +1195,19 @@ function submitPost() {
 
   const title = document.getElementById("post-title").value.trim()
   const content = document.getElementById("post-content").value.trim()
-  const categoryInput = document.getElementById("post-categories").value.trim()
+
+  const select = document.getElementById("post-categories-select");
+  const categories = [...select.selectedOptions].map(option => option.value);
 
   if (!title || !content) {
     alert("Title and content are required.")
     return
   }
 
-  const categories = categoryInput
-    .split(",")
-    .map(c => c.trim())
-    .filter(c => c.length > 0)
+  if (categories.length === 0) {
+    alert("Please select at least one category.");
+    return;
+  }
 
   fetch("/posts", {
     method: "POST",

@@ -22,6 +22,24 @@ type MessageWithAuthor struct {
 	FromNickname string `json:"from_nickname"`
 }
 
+func PrepopulateCategories(db *sql.DB) error {
+	categories := []string{"Sports", "Politics", "Music", "Entertainment", "General"}
+	stmt, err := db.Prepare("INSERT OR IGNORE INTO categories (name) VALUES (?)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement for categories: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, category := range categories {
+		if _, err := stmt.Exec(category); err != nil {
+			log.Printf("Could not insert category %s: %v", category, err)
+			// Continue trying to insert others
+		}
+	}
+	log.Println("Finished pre-populating categories.")
+	return nil
+}
+
 func InitDB(dbFile string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dbFile)
 	if err != nil {
@@ -44,6 +62,11 @@ func InitDB(dbFile string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if err := PrepopulateCategories(db); err != nil {
+		log.Printf("Warning: could not pre-populate categories: %v", err)
+	}
+
 	return db, nil
 }
 
@@ -138,36 +161,56 @@ func InsertPostCategories(db *sql.DB, postUUID string, categories []string) erro
 		return nil
 	}
 
-	// Get the post ID (integer) using post_uuid
 	var postID int
 	err := db.QueryRow("SELECT id FROM posts WHERE post_uuid = ?", postUUID).Scan(&postID)
 	if err != nil {
 		return fmt.Errorf("failed to get post ID from post_uuid: %w", err)
 	}
 
-	for _, cat := range categories {
-		// Insert category if it doesn't exist yet
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Prepare statement to get category ID
+	catStmt, err := tx.Prepare("SELECT id FROM categories WHERE name = ?")
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to prepare category select statement: %w", err)
+	}
+	defer catStmt.Close()
+
+	// Prepare statement to insert into linking table
+	linkStmt, err := tx.Prepare("INSERT INTO post_categories (post_id, category_id) VALUES (?, ?)")
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to prepare post_categories insert statement: %w", err)
+	}
+	defer linkStmt.Close()
+
+	for _, catName := range categories {
 		var categoryID int
-		err := db.QueryRow("SELECT id FROM categories WHERE name = ?", cat).Scan(&categoryID)
+		// Find the ID of the existing category.
+		err := catStmt.QueryRow(catName).Scan(&categoryID)
 		if err == sql.ErrNoRows {
-			res, err := db.Exec("INSERT INTO categories (name) VALUES (?)", cat)
-			if err != nil {
-				return fmt.Errorf("failed to insert category %s: %w", cat, err)
-			}
-			newID, _ := res.LastInsertId()
-			categoryID = int(newID)
+			// If a category from the frontend doesn't exist, we skip it.
+			// This prevents creating unwanted categories.
+			log.Printf("Warning: category '%s' not found, skipping.", catName)
+			continue
 		} else if err != nil {
-			return fmt.Errorf("failed to query category %s: %w", cat, err)
+			tx.Rollback()
+			return fmt.Errorf("failed to query for category '%s': %w", catName, err)
 		}
 
-		// Insert into post_categories
-		_, err = db.Exec("INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)", postID, categoryID)
+		// Link the post and the category.
+		_, err = linkStmt.Exec(postID, categoryID)
 		if err != nil {
-			return fmt.Errorf("failed to link post and category: %w", err)
+			tx.Rollback()
+			return fmt.Errorf("failed to link post with category '%s': %w", catName, err)
 		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func SaveMessage(db *sql.DB, uuid, sender, receiver, content string, createdAt time.Time) error {
