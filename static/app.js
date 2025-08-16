@@ -1078,11 +1078,15 @@ function loadPostFeed() {
       posts.forEach(p => {
         const div = document.createElement("div");
         div.className = "post-item";
+        const safeTitle = p.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeContent = p.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
         div.innerHTML = `
-          <strong>${p.title}</strong><br>
+          <strong>${safeTitle}</strong><br>
           by ${p.nickname}<br>
           <small>${new Date(p.created_at).toLocaleString()}</small><br>
           <small>Categories: ${p.categories ? p.categories.join(', ') : 'None'}</small>
+          <p>${safeContent}</p>
         `;
         div.onclick = () => openPostView(p.uuid);
         feed.appendChild(div);
@@ -1121,10 +1125,11 @@ function openPostView(uuid) {
         data.comments.forEach(c => {
           const d = document.createElement("div")
           d.className = "comment-item";
+          const safeContent = c.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
           d.innerHTML = `
           <div class="comment-body">
             <div class="comment-author">${c.author}</div>
-            <div class="comment-content">${c.content}</div>
+            <div class="comment-content">${safeContent}</div>
           </div>
         `;
           commentsDiv.appendChild(d);
@@ -1242,6 +1247,8 @@ function submitPost() {
     .catch(err => {
       alert("Error posting: " + err.message)
     })
+
+    
 }
 
 

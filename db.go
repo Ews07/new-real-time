@@ -152,8 +152,11 @@ func DeleteSession(db *sql.DB, sessionUUID string) error {
 }
 
 func InsertPost(db *sql.DB, postUUID, userUUID, title, content string, createdAt time.Time) error {
+	safeTitle := html.EscapeString(title)
+	safeContent := html.EscapeString(content)
+
 	stmt := "INSERT INTO posts (post_uuid, user_uuid, title, content, created_at) VALUES (?, ?, ?, ?, ?)"
-	_, err := db.Exec(stmt, postUUID, userUUID, title, content, createdAt)
+	_, err := db.Exec(stmt, postUUID, userUUID, safeTitle, safeContent, createdAt)
 	return err
 }
 
@@ -360,11 +363,12 @@ func LoadPostWithComments(db *sql.DB, postUUID string) (*FullPost, error) {
 }
 
 func InsertComment(db *sql.DB, userUUID, postUUID, content string) error {
+	safeContent := html.EscapeString(content)
 	stmt := `
 		INSERT INTO comments (post_id, user_uuid, content, created_at)
 		VALUES ((SELECT id FROM posts WHERE post_uuid = ?), ?, ?, ?)
 	`
-	_, err := db.Exec(stmt, postUUID, userUUID, content, time.Now())
+	_, err := db.Exec(stmt, postUUID, userUUID, safeContent, time.Now())
 	return err
 }
 
