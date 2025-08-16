@@ -133,6 +133,16 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+  const toggleBtn = document.getElementById('toggle-theme-btn');
+  if (toggleBtn) {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light') document.body.classList.add('light-mode');
+
+    toggleBtn.addEventListener('click', () => {
+      document.body.classList.toggle('light-mode');
+      localStorage.setItem('theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+    });
+  }
 
   // Check session first
   fetch("/me", {
@@ -246,7 +256,7 @@ window.addEventListener("DOMContentLoaded", () => {
 function updateWelcomeMessage(nickname) {
   const welcomeElement = document.querySelector('#main-header .logo h4');
   console.log("Welcome msg ==== ", welcomeElement);
-  
+
   if (welcomeElement) {
     welcomeElement.textContent = `${nickname}`;
   }
@@ -835,6 +845,7 @@ function updateUserList() {
     li.onclick = () => {
       console.log("User clicked:", user.nickname, user.uuid);
       openChat(user.uuid);
+      showChatPopup();
     }
 
     // Highlight if this is the currently active chat

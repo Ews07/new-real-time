@@ -96,7 +96,7 @@
       </div>
 
       <div id="chat-section">
-        
+
         <div id="category-filter">
           <h4>CATEGORIES</h4>
         </div>
@@ -107,7 +107,10 @@
             <div id="post-form" style="display: none;">
               <input type="text" id="post-title" placeholder="Title" />
               <textarea id="post-content" placeholder="Write your post..." rows="4"></textarea>
-              <input type="text" id="post-categories" placeholder="Categories (comma-separated)" />
+              + <div id="post-categories-container">
+                + <label>Select Categories:</label>
+                + <select id="post-categories-select" multiple></select>
+                + </div>
               <button id="submit-post">Post</button>
             </div>
             <div id="post-feed"></div>
