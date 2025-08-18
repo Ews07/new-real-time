@@ -30,6 +30,9 @@ function showChatUI() {
   document.getElementById("register-section").style.display = "none"
   document.getElementById("main-header").style.display = "flex"
   document.getElementById("forum-view").style.display = "block"
+  document.getElementById("chat-popup").style.display = "flex"
+  document.getElementById("notification-popup").style.display = "flex"
+
   resetPostFeed()
   // fetchAllUsers()
 
@@ -1125,7 +1128,7 @@ function openPostView(uuid) {
         data.comments.forEach(c => {
           const d = document.createElement("div")
           d.className = "comment-item";
-          const safeContent = c.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const safeContent = c.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           d.innerHTML = `
           <div class="comment-body">
             <div class="comment-author">${c.author}</div>
@@ -1248,7 +1251,7 @@ function submitPost() {
       alert("Error posting: " + err.message)
     })
 
-    
+
 }
 
 
