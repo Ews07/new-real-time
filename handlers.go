@@ -92,6 +92,18 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Add user to onlineUsers with default offline presence
+		onlineUsers[userUUID] = &UserPresence{
+			UserUUID:        userUUID,
+			Nickname:        req.Nickname,
+			IsOnline:        false,
+			LastMessage:     "",
+			LastMessageTime: time.Time{},
+		}
+
+		// Broadcast updated user list to all connected clients
+		sendOnlineUsersToAllConnected(db)
+
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("User registered successfully"))
 		fmt.Println("User registred succussfully")
