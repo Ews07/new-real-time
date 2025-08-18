@@ -30,6 +30,7 @@ function showChatUI() {
   document.getElementById("register-section").style.display = "none"
   document.getElementById("main-header").style.display = "flex"
   document.getElementById("forum-view").style.display = "block"
+  document.getElementById("chat-popup").style.display = "flex"
   resetPostFeed()
   // fetchAllUsers()
 
@@ -246,7 +247,7 @@ window.addEventListener("DOMContentLoaded", () => {
 function updateWelcomeMessage(nickname) {
   const welcomeElement = document.querySelector('#main-header .logo h4');
   console.log("Welcome msg ==== ", welcomeElement);
-  
+
   if (welcomeElement) {
     welcomeElement.textContent = `${nickname}`;
   }

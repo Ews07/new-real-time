@@ -463,7 +463,7 @@ select {
   background: var(--bg-glass);
   backdrop-filter: blur(10px);
   border: 1px solid var(--border-primary);
-  color: var(--text-primary);
+  color: var(--text-muted);
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   font-size: var(--text-base);
@@ -1701,7 +1701,7 @@ textarea:focus::placeholder {
 }
 
 /* Responsive Design for Mobile */
-@media (max-width: 940px) {
+@media (max-width: 900px) {
   #chat-section {
     grid-template-columns: 1fr;
     gap: var(--space-4);
