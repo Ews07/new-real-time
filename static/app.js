@@ -30,6 +30,8 @@ function showChatUI() {
   document.getElementById("register-section").style.display = "none"
   document.getElementById("main-header").style.display = "flex"
   document.getElementById("forum-view").style.display = "block"
+  document.getElementById("chat-popup").style.display = "flex"
+  document.getElementById("notification-popup").style.display = "flex"
   resetPostFeed()
   // fetchAllUsers()
 
