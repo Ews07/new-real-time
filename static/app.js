@@ -1125,7 +1125,7 @@ function openPostView(uuid) {
         data.comments.forEach(c => {
           const d = document.createElement("div")
           d.className = "comment-item";
-          const safeContent = c.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const safeContent = c.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           d.innerHTML = `
           <div class="comment-body">
             <div class="comment-author">${c.author}</div>
@@ -1199,22 +1199,22 @@ postModal.addEventListener('click', (event) => {
 // }
 
 function submitPost() {
-  const postForm = document.getElementById("post-form")
+  const postForm = document.getElementById("post-form");
   if (!postForm) {
-    console.error("post-form not found in DOM.")
-    alert("Post form not found. Are you logged in?")
-    return
+    console.error("post-form not found in DOM.");
+    return;
   }
 
-  const title = document.getElementById("post-title").value.trim()
-  const content = document.getElementById("post-content").value.trim()
-
+  const title = document.getElementById("post-title").value.trim();
+  const content = document.getElementById("post-content").value.trim();
   const select = document.getElementById("post-categories-select");
+
+  // Correctly get all selected categories from the new dropdown
   const categories = [...select.selectedOptions].map(option => option.value);
 
   if (!title || !content) {
-    alert("Title and content are required.")
-    return
+    alert("Title and content are required.");
+    return;
   }
 
   if (categories.length === 0) {
@@ -1228,29 +1228,34 @@ function submitPost() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, content, categories }),
   })
-    // console.log(title, content, categories)
-
     .then(res => {
-      if (!res.ok) throw new Error("Post failed")
-      return res.text()
+      if (!res.ok) {
+        // If the server returns an error, show it to the user
+        return res.text().then(text => { throw new Error(text) });
+      }
+      return res.text();
     })
     .then(() => {
-      alert("Post created!")
-      document.getElementById("post-title").value = ""
-      document.getElementById("post-content").value = ""
-      document.getElementById("post-categories").value = ""
-      console.log(postForm, postForm.style)
+      console.log("Post created successfully!");
 
-      if (postForm && postForm.style) postForm.style.display = "none"
-      resetPostFeed()
+      // 1. Clear the form fields correctly
+      document.getElementById("post-title").value = "";
+      document.getElementById("post-content").value = "";
+      select.selectedIndex = -1; // This deselects all options in the dropdown
+
+      // 2. Hide the form
+      postForm.style.display = "none";
+
+      // 3. Reset the category filter to "All" and reload the feed
+      // This ensures your new post is visible regardless of the previous filter
+      selectCategory("");
     })
     .catch(err => {
-      alert("Error posting: " + err.message)
-    })
-
-    
+      // This will now catch the TypeError and any server errors
+      console.error("Error posting:", err);
+      alert("Error posting: " + err.message);
+    });
 }
-
 
 
 
