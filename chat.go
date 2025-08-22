@@ -108,43 +108,43 @@ func handleMessages(db *sql.DB) {
 
 		// Instead, we now generate and send personalized user lists to the participants.
 		sendPersonalizedUserLists(db, msg.From, msg.To)
-		
+
 	}
 }
 
 // NEW HELPER FUNCTION: Generates a contextual user list for a specific user.
 func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) {
+	rows, err := db.Query(`SELECT uuid, nickname FROM users WHERE uuid != ?`, viewerUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	users := []UserPresence{}
 
-	// Iterate over a copy of the keys to avoid race conditions if the map is modified elsewhere
-	userUUIDs := make([]string, 0, len(onlineUsers))
-	for k := range onlineUsers {
-		userUUIDs = append(userUUIDs, k)
-	}
-
-	for _, otherUserUUID := range userUUIDs {
-		// We don't need to show the viewer themselves in the list.
-		if otherUserUUID == viewerUUID {
-			continue
+	for rows.Next() {
+		var uuid string
+		var nickname string
+		if err := rows.Scan(&uuid, &nickname); err != nil {
+			return nil, err
 		}
 
-		presenceInfo, ok := onlineUsers[otherUserUUID]
-		if !ok {
-			continue // Should not happen, but safe to check
+		// Is this user online?
+		isOnline := false
+		if presence, ok := onlineUsers[uuid]; ok {
+			isOnline = presence.IsOnline
 		}
 
-		// Get the last message specifically between the viewer and this other user
-		lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUserUUID)
+		// Get last message between viewer and this user
+		lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, uuid)
 
-		// Create a new UserPresence struct with the correct contextual data
-		contextualPresence := UserPresence{
-			UserUUID:        presenceInfo.UserUUID,
-			Nickname:        presenceInfo.Nickname,
-			IsOnline:        presenceInfo.IsOnline,
+		users = append(users, UserPresence{
+			UserUUID:        uuid,
+			Nickname:        nickname,
+			IsOnline:        isOnline,
 			LastMessage:     lastMsg,
 			LastMessageTime: lastTime,
-		}
-		users = append(users, contextualPresence)
+		})
 	}
 
 	// Sort the personalized list
@@ -223,7 +223,6 @@ func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
 
 // MODIFIED: This function now sends personalized lists to ALL connected clients.
 func sendOnlineUsersToAllConnected(db *sql.DB) {
-	// Loop through all connected clients
 	for uuid, client := range clients {
 		userList, err := generateUserListFor(db, uuid)
 		if err != nil {
@@ -231,6 +230,7 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 			continue
 		}
 
+		// Build response
 		data := map[string]interface{}{
 			"type":  "user_list",
 			"users": userList,
@@ -242,8 +242,10 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 			continue
 		}
 
+		// Send to that client
 		select {
 		case client.Send <- encoded:
+			log.Printf("Sent full user_list to %s (total users: %d)", uuid, len(userList))
 		default:
 			log.Printf("Skipping blocked client during global update: %s", client.UserUUID)
 		}
@@ -344,6 +346,7 @@ func readPump(db *sql.DB, client *Client) {
 		}
 	}
 }
+
 func writePump(client *Client) {
 	for {
 		msg, ok := <-client.Send
