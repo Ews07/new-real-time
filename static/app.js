@@ -492,8 +492,24 @@ function connectWebSocket() {
       const data = JSON.parse(event.data)
       console.log("Parsed WebSocket data:", data);
 
-      if (data.type === "user_list") {
-        console.log("Received user list update");
+
+      if (data.type === "user_registered") {
+        const u = data.user;
+        const newUser = {
+          uuid: u.user_uuid, // map field
+          nickname: u.nickname,
+          isOnline: u.IsOnline || false,
+          lastMessage: "",
+          lastMessageTime: null
+        };
+        console.log("newUser.uuid ",newUser.uuid);
+
+        allUsers.push(newUser);
+        console.log("--------",allUsers);
+        
+        updateUserList(data.users);
+      } else if (data.type === "user_list") {
+        console.log("Received user list update",);
         renderOnlineUsers(data.users)
       } else if (data.type === "typing_start") {
         console.log("User started typing:", data.nickname);
@@ -837,6 +853,7 @@ function updateUserList() {
 
     return a.nickname.localeCompare(b.nickname)
   })
+  console.log("otherusers in updateUserList()", otherUsers);
 
   otherUsers.forEach(user => {
     const li = document.createElement("li")

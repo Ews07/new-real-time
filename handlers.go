@@ -92,6 +92,30 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// After successful InsertUserFull:
+		newUser := UserPresence{
+			UserUUID: userUUID,
+			Nickname: req.Nickname,
+			IsOnline: false, // not connected yet
+			LastMessage: "",
+			LastMessageTime: time.Time{},
+		}
+
+		data := map[string]interface{}{
+			"type": "user_registered",
+			"user": newUser,
+		}
+		encoded, _ := json.Marshal(data)
+
+		// Push to all connected clients
+		for _, client := range clients {
+			select {
+			case client.Send <- encoded:
+			default:
+				log.Printf("Client %s channel full, skipping", client.UserUUID)
+			}
+		}
+
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("User registered successfully"))
 		fmt.Println("User registred succussfully")
