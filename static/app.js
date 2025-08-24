@@ -1352,3 +1352,53 @@ function hideTypingIndicator() {
     typingIndicator.remove();
   }
 }
+
+function showNotFound() {
+  const main = document.querySelector("main.container");
+  main.innerHTML = `
+    <div class="error-page">
+      <h1>404</h1>
+      <p>Oops! The page you are looking for does not exist.</p>
+      <button onclick="navigate('/')">Go Home</button>
+    </div>
+  `;
+}
+
+function showServerError() {
+  const main = document.querySelector("main.container");
+  main.innerHTML = `
+    <div class="error-page">
+      <h1>500</h1>
+      <p>Something went wrong on our side. Please try again later.</p>
+      <button onclick="navigate('/')">Go Home</button>
+    </div>
+  `;
+}
+
+// Simple SPA router
+function navigate(path) {
+  window.history.pushState({}, "", path);
+  renderRoute(path);
+}
+
+function renderRoute(path) {
+  if (path === "/") {
+    showChatUI();
+  } else if (path === "/login") {
+    showLoginUI();
+  } else if (path === "/register") {
+    showRegisterUI();
+  } else {
+    showNotFound(); // ✅ any unknown path
+  }
+}
+
+// Handle back/forward
+window.addEventListener("popstate", () => {
+  renderRoute(window.location.pathname);
+});
+
+// Initial load
+document.addEventListener("DOMContentLoaded", () => {
+  renderRoute(window.location.pathname);
+});

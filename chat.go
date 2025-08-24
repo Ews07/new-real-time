@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	clients     = make(map[string]*Client)        // key = user UUID
-	broadcast   = make(chan Message)              // channel for incoming messages
-	onlineUsers = make(map[string]*UserPresence)  // key = userUUID
-	typingUsers = make(map[*Client]*TypingStatus) // key = userUUID
+	clients     = make(map[string]map[*Client]bool) // Each user can have multiple active connections
+	broadcast   = make(chan Message)                // channel for incoming messages
+	onlineUsers = make(map[string]*UserPresence)    // key = userUUID
+	typingUsers = make(map[*Client]*TypingStatus)   // key = userUUID
 )
 
 type Client struct {
@@ -91,15 +91,17 @@ func handleMessages(db *sql.DB) {
 		}
 
 		// If receiver is online, send the message directly.
-		if client, ok := clients[msg.To]; ok {
-			log.Printf("BROADCAST: Message from %s to %s. Sending to Websockets.", msg.From, msg.To)
-			client.Send <- data
+		if receivers, ok := clients[msg.To]; ok {
+			for c := range receivers {
+				c.Send <- data
+			}
 		}
 
 		// Send back to sender as confirmation.
-		if sender, ok := clients[msg.From]; ok {
-			log.Printf("BROADCAST: Message from %s to %s. Sending to Websockets.", msg.From, msg.To)
-			sender.Send <- data
+		if senders, ok := clients[msg.From]; ok {
+			for c := range senders {
+				c.Send <- data
+			}
 		}
 
 		// --- REMOVED ---
@@ -169,27 +171,41 @@ func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) 
 
 // MODIFIED FUNCTION: Renamed from sendOnlineUsersToAll and logic changed
 func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
-	// Generate and send the list for the SENDER
-	if client, ok := clients[senderUUID]; ok {
+	// Generate and send the list for the SENDER (all tabs/windows)
+	if conns, ok := clients[senderUUID]; ok {
 		userList, err := generateUserListFor(db, senderUUID)
 		if err != nil {
 			log.Printf("Error generating user list for sender %s: %v", senderUUID, err)
 		} else {
 			data := map[string]interface{}{"type": "user_list", "users": userList}
 			encoded, _ := json.Marshal(data)
-			client.Send <- encoded
+
+			for client := range conns {
+				select {
+				case client.Send <- encoded:
+				default:
+					log.Printf("Sender %s connection skipped (channel full)", senderUUID)
+				}
+			}
 		}
 	}
 
-	// Generate and send the list for the RECEIVER
-	if client, ok := clients[receiverUUID]; ok {
+	// Generate and send the list for the RECEIVER (all tabs/windows)
+	if conns, ok := clients[receiverUUID]; ok {
 		userList, err := generateUserListFor(db, receiverUUID)
 		if err != nil {
 			log.Printf("Error generating user list for receiver %s: %v", receiverUUID, err)
 		} else {
 			data := map[string]interface{}{"type": "user_list", "users": userList}
 			encoded, _ := json.Marshal(data)
-			client.Send <- encoded
+
+			for client := range conns {
+				select {
+				case client.Send <- encoded:
+				default:
+					log.Printf("Receiver %s connection skipped (channel full)", receiverUUID)
+				}
+			}
 		}
 	}
 }
@@ -223,10 +239,10 @@ func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
 
 // MODIFIED: This function now sends personalized lists to ALL connected clients.
 func sendOnlineUsersToAllConnected(db *sql.DB) {
-	for uuid, client := range clients {
-		userList, err := generateUserListFor(db, uuid)
+	for userUUID, conns := range clients {
+		userList, err := generateUserListFor(db, userUUID)
 		if err != nil {
-			log.Printf("Error generating user list for %s on global update: %v", uuid, err)
+			log.Printf("Error generating user list for %s on global update: %v", userUUID, err)
 			continue
 		}
 
@@ -242,12 +258,14 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 			continue
 		}
 
-		// Send to that client
-		select {
-		case client.Send <- encoded:
-			log.Printf("Sent full user_list to %s (total users: %d)", uuid, len(userList))
-		default:
-			log.Printf("Skipping blocked client during global update: %s", client.UserUUID)
+		// Send to ALL connections for this user (all tabs/windows)
+		for client := range conns {
+			select {
+			case client.Send <- encoded:
+				log.Printf("Sent full user_list to %s (total users: %d)", userUUID, len(userList))
+			default:
+				log.Printf("Skipping blocked client during global update: %s (one of multiple connections)", client.UserUUID)
+			}
 		}
 	}
 }
@@ -256,9 +274,12 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 func readPump(db *sql.DB, client *Client) {
 	defer func() {
 		client.Conn.Close()
-		delete(clients, client.UserUUID)
-		if u, ok := onlineUsers[client.UserUUID]; ok {
-			u.IsOnline = false
+		delete(clients[client.UserUUID], client)
+		if len(clients[client.UserUUID]) == 0 {
+			delete(clients, client.UserUUID)
+			if u, ok := onlineUsers[client.UserUUID]; ok {
+				u.IsOnline = false
+			}
 		}
 
 		// If this client was typing, tell the recipient to stop
@@ -269,13 +290,19 @@ func readPump(db *sql.DB, client *Client) {
 				To:       status.TypingTo,
 				Nickname: status.Nickname,
 			}
-			if targetClient, ok := clients[status.TypingTo]; ok {
+
+			if conns, ok := clients[status.TypingTo]; ok {
 				if data, err := json.Marshal(typingStopMsg); err == nil {
-					targetClient.Send <- data
+					for targetConn := range conns {
+						select {
+						case targetConn.Send <- data:
+						default:
+							log.Printf("Skipping blocked client %s during typing_stop", status.TypingTo)
+						}
+					}
 				}
 			}
 		}
-
 		// Clean up typing status when user disconnects
 		delete(typingUsers, client)
 		log.Printf("User %s disconnected. Total clients: %d", client.UserUUID, len(clients))
@@ -373,19 +400,20 @@ func handleTypingMessage(client *Client, msg TypingMessage) {
 		delete(typingUsers, client)
 	}
 
-	// Send typing status to the target user
-	if targetClient, ok := clients[msg.To]; ok {
+	// Send typing status to ALL connections of the target user
+	if targets, ok := clients[msg.To]; ok {
 		data, err := json.Marshal(msg)
 		if err != nil {
 			log.Println("Error marshaling typing message:", err)
 			return
 		}
 
-		select {
-		case targetClient.Send <- data:
-			log.Printf("Sent typing status to %s", msg.To)
-		default:
-			log.Printf("Failed to send typing status to %s (channel blocked)", msg.To)
+		for c := range targets {
+			select {
+			case c.Send <- data:
+			default:
+				log.Printf("Failed to send typing status to %s (channel blocked)", msg.To)
+			}
 		}
 	}
 }
@@ -397,10 +425,10 @@ func cleanupOldTypingStatus() {
 
 	for range ticker.C {
 		now := time.Now()
-		for userUUID, status := range typingUsers {
+		for client, status := range typingUsers {
 			if now.Sub(status.LastSeen) > 15*time.Second {
-				log.Printf("Cleaning up stale typing status for user %s", userUUID)
-				delete(typingUsers, userUUID)
+				log.Printf("Cleaning up stale typing status for client %s (user %s)", client.UserUUID, status.UserUUID)
+				delete(typingUsers, client)
 			}
 		}
 	}
