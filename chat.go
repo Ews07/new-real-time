@@ -1,5 +1,3 @@
-// chat.go
-
 package main
 
 import (
@@ -21,9 +19,10 @@ var (
 )
 
 type Client struct {
-	Conn     *websocket.Conn
-	UserUUID string
-	Send     chan []byte
+	Conn        *websocket.Conn
+	UserUUID    string
+	SessionUUID string
+	Send        chan []byte
 }
 
 type Message struct {
@@ -272,6 +271,12 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 
 // MODIFIED: readPump and writePump need to pass the *sql.DB to sendOnlineUsersToAllConnected
 func readPump(db *sql.DB, client *Client) {
+	_, err := GetSession(db, client.SessionUUID)
+	if err != nil {
+		log.Printf("Invalid session %s for user %s, closing WS", client.SessionUUID, client.UserUUID)
+		return // ✅ end readPump immediately, defer cleanup runs
+	}
+
 	defer func() {
 		client.Conn.Close()
 		delete(clients[client.UserUUID], client)
@@ -312,6 +317,14 @@ func readPump(db *sql.DB, client *Client) {
 	}()
 
 	for {
+		// ✅ Check session validity each loop
+		_, err := GetSession(db, client.SessionUUID)
+		if err != nil {
+			log.Printf("Session expired or invalid for %s, closing WS", client.UserUUID)
+			client.Conn.Close()
+			break
+		}
+
 		// Read raw JSON message
 		_, message, err := client.Conn.ReadMessage()
 		if err != nil {

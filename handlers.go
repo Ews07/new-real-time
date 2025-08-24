@@ -203,6 +203,17 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// ✅ Close WS connections tied to this session
+		for _, conns := range clients {
+			for c := range conns {
+				if c.SessionUUID == sessionToken {
+					log.Printf("Closing WS for user %s (session %s)", c.UserUUID, c.SessionUUID)
+					c.Conn.Close()
+					delete(conns, c)
+				}
+			}
+		}
+
 		// Expire the session cookie
 		expiredCookie := &http.Cookie{
 			Name:     "session_token",
@@ -316,10 +327,17 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		cookie, err := r.Cookie("session_token")
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		client := &Client{
-			Conn:     conn,
-			UserUUID: userUUID,
-			Send:     make(chan []byte, 256),
+			Conn:        conn,
+			UserUUID:    userUUID,
+			SessionUUID: cookie.Value, // ✅ attach session
+			Send:        make(chan []byte, 256),
 		}
 
 		// ✅ Add client into map of connections for this user
