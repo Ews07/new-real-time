@@ -15,6 +15,26 @@ let currentCategory = "";
 let isLoadingMessages = false;
 let chatScrollHandlerAttached = false;
 
+
+// Simple SPA router
+function navigate(path) {
+  window.history.pushState({}, "", path);
+  renderRoute(path);
+}
+
+function renderRoute(path) {
+  if (path === "/") {
+    showChatUI();
+  } else if (path === "/login") {
+    showLoginUI();
+  } else if (path === "/register") {
+    showRegisterUI();
+  } else {
+    showNotFound(); // ✅ any unknown path
+  }
+}
+
+
 // SPA View Switcher
 function showLoginUI() {
   document.getElementById("login-section").style.display = "block"
@@ -1386,24 +1406,6 @@ function showServerError() {
       <button onclick="navigate('/')">Go Home</button>
     </div>
   `;
-}
-
-// Simple SPA router
-function navigate(path) {
-  window.history.pushState({}, "", path);
-  renderRoute(path);
-}
-
-function renderRoute(path) {
-  if (path === "/") {
-    showChatUI();
-  } else if (path === "/login") {
-    showLoginUI();
-  } else if (path === "/register") {
-    showRegisterUI();
-  } else {
-    showNotFound(); // ✅ any unknown path
-  }
 }
 
 // Handle back/forward
