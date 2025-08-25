@@ -567,7 +567,7 @@ function connectWebSocket() {
         const newUser = {
           uuid: u.user_uuid,
           nickname: u.nickname,
-          isOnline: u.IsOnline || false,
+          isOnline: false,
           lastMessage: "",
           lastMessageTime: null
         };
