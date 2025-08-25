@@ -43,9 +43,11 @@ function showLoginUI() {
   document.getElementById("main-header").style.display = "none"
   document.getElementById("chat-popup").style.display = "none"
   document.getElementById("notification-popup").style.display = "none"
+  document.getElementById("error-container").style.display = "none";
 }
 
 function showChatUI() {
+  document.getElementById("error-container").style.display = "none";
   document.getElementById("login-section").style.display = "none"
   document.getElementById("register-section").style.display = "none"
   document.getElementById("main-header").style.display = "flex"
@@ -491,13 +493,57 @@ function logout() {
     method: "POST",
     credentials: "include",
   }).then(() => {
-    socket?.close()
-    showLoginUI()
-  })
+    // Close WebSocket
+    if (socket) {
+      socket.close();
+      socket = null;
+    }
+
+    // Reset app state
+    currentUserUUID = "";
+    chatWith = "";
+    messagesOffset = 0;
+    isCurrentlyTyping = false;
+    typingUsers.clear();
+    allUsers = [];
+
+    // Clear chat history (only messages, keep structure intact)
+    const chatHistory = document.getElementById("chat-history");
+    if (chatHistory) {
+      chatHistory.innerHTML = "";
+    }
+
+    // ✅ Always hide popup completely on logout
+    hideChatPopup();
+
+    // Reset user list
+    const userList = document.getElementById("all-users");
+    if (userList) {
+      userList.innerHTML = "";
+    }
+
+    // Show login page
+    showLoginUI();
+  });
 }
+
+
 
 // WebSocket
 function connectWebSocket() {
+  // Cleanup old socket before making a new one
+  if (socket) {
+    try {
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.close();
+    } catch (e) {
+      console.warn("Error cleaning old socket:", e);
+    }
+    socket = null;
+  }
+
   console.log("Attempting to connect WebSocket...");
   socket = new WebSocket("ws://localhost:8080/ws")
 
@@ -516,9 +562,7 @@ function connectWebSocket() {
         allUsers = [];
         showLoginUI(); // Switch to login screen immediately
         return;
-      }
-
-      if (data.type === "user_registered") {
+      } else if (data.type === "user_registered") {
         const u = data.user;
         const newUser = {
           uuid: u.user_uuid,
@@ -543,6 +587,8 @@ function connectWebSocket() {
         }
       } else {
         if (data.from === chatWith) hideTypingIndicator();
+        console.log("message dat in socket:::::", data);
+
         renderIncomingMessage(data);
       }
     } catch (error) {
@@ -560,16 +606,16 @@ function connectWebSocket() {
   };
 }
 
-// Sending message
-document.getElementById("chat-input").addEventListener("keydown", function (e) {
-  if (e.key === "Enter") {
-    const content = this.value.trim()
-    if (!content || !chatWith) return
-    const msg = { to: chatWith, content: content }
-    socket.send(JSON.stringify(msg))
-    this.value = ""
-  }
-})
+// // Sending message
+// document.getElementById("chat-input").addEventListener("keydown", function (e) {
+//   if (e.key === "Enter") {
+//     const content = this.value.trim()
+//     if (!content || !chatWith) return
+//     const msg = { to: chatWith, content: content }
+//     socket.send(JSON.stringify(msg))
+//     this.value = ""
+//   }
+// })
 
 // Load Chat History
 function openChat(userUUID) {
@@ -768,6 +814,7 @@ function renderIncomingMessage(msg) {
 
     const messageEl = createMessageElement(msg);
     chatHistory.appendChild(messageEl);
+    console.log("message data in renderIncomingMessage", msg);
 
     // Auto-scroll to the bottom to show the new message
     chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -1387,25 +1434,36 @@ function hideTypingIndicator() {
 }
 
 function showNotFound() {
-  const main = document.querySelector("main.container");
-  main.innerHTML = `
+  const errorDiv = document.getElementById("error-container");
+  errorDiv.style.display = "block";
+  errorDiv.innerHTML = `
     <div class="error-page">
       <h1>404</h1>
       <p>Oops! The page you are looking for does not exist.</p>
       <button onclick="navigate('/')">Go Home</button>
     </div>
   `;
+
+  // hide other sections
+  document.getElementById("login-section").style.display = "none";
+  document.getElementById("register-section").style.display = "none";
+  document.getElementById("forum-view").style.display = "none";
 }
 
 function showServerError() {
-  const main = document.querySelector("main.container");
-  main.innerHTML = `
+  const errorDiv = document.getElementById("error-container");
+  errorDiv.style.display = "block";
+  errorDiv.innerHTML = `
     <div class="error-page">
       <h1>500</h1>
       <p>Something went wrong on our side. Please try again later.</p>
       <button onclick="navigate('/')">Go Home</button>
     </div>
   `;
+
+  document.getElementById("login-section").style.display = "none";
+  document.getElementById("register-section").style.display = "none";
+  document.getElementById("forum-view").style.display = "none";
 }
 
 // Handle back/forward
