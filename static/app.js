@@ -502,11 +502,11 @@ function connectWebSocket() {
           lastMessage: "",
           lastMessageTime: null
         };
-        console.log("newUser.uuid ",newUser.uuid);
+        console.log("newUser.uuid ", newUser.uuid);
 
         allUsers.push(newUser);
-        console.log("--------",allUsers);
-        
+        console.log("--------", allUsers);
+
         updateUserList(data.users);
       } else if (data.type === "user_list") {
         console.log("Received user list update",);
@@ -576,9 +576,13 @@ function openChat(userUUID) {
   showChatPopup();
   updateChatPopupTitle(nickname);
 
-  // Remove unread indicator when opening a chat
-  const userList = document.getElementById("all-users");
-  const userItem = userList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  // MODIFIED: Search both lists for the user item to remove unread indicator
+  const onlineList = document.getElementById("online-users-list");
+  const offlineList = document.getElementById("offline-users-list");
+  let userItem = onlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  if (!userItem) {
+    userItem = offlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  }
   if (userItem) {
     userItem.classList.remove('has-unread');
   }
@@ -588,14 +592,11 @@ function openChat(userUUID) {
     item.classList.remove('active');
   });
 
-  // Find and highlight the clicked user
-  const userItems = document.querySelectorAll('.user-item');
-  userItems.forEach(item => {
-    // Check if this item's onclick contains the userUUID
-    if (item.onclick && item.onclick.toString().includes(userUUID)) {
-      item.classList.add('active');
-    }
-  });
+  // Re-select the correct user item after clearing all
+  if (userItem) {
+    userItem.classList.add('active');
+  }
+
 
   // Set the chat target
   chatWith = userUUID;
@@ -765,10 +766,14 @@ function renderIncomingMessage(msg) {
   // This block runs for any message received from another person.
   if (msg.from !== currentUserUUID) {
 
-    // 3a. Add the persistent "unread dot" indicator to the user in the list.
-    // This happens whether the pop-up appears or not. It marks the conversation as having new messages.
-    const userList = document.getElementById("all-users");
-    const userItem = userList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    // MODIFIED: Find the user item in either the online or offline list
+    const onlineList = document.getElementById("online-users-list");
+    const offlineList = document.getElementById("offline-users-list");
+    let userItem = onlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    if (!userItem) {
+      userItem = offlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    }
+
     if (userItem) {
       userItem.classList.add('has-unread');
     }
@@ -817,96 +822,113 @@ function renderOnlineUsers(users) {
 }
 
 
-// Render all users in the user list
-// Render all users in the user list with proper sorting
+// MODIFIED: This function now separates users into online and offline lists.
 function updateUserList() {
-  const list = document.getElementById("all-users")
-  if (!list) {
-    console.error("all-users element not found")
-    return
+  const onlineList = document.getElementById("online-users-list");
+  const offlineList = document.getElementById("offline-users-list");
+
+  if (!onlineList || !offlineList) {
+    console.error("User list elements ('online-users-list' or 'offline-users-list') not found");
+    return;
   }
 
-  list.innerHTML = ""
+  onlineList.innerHTML = "";
+  offlineList.innerHTML = "";
 
-  // Filter out current user and sort the list
-  const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID)
-  console.log("Other users to display:", otherUsers);
+  // 1. Filter out the current user from the main list
+  const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID);
 
-  // Sort users the same way as backend
-  otherUsers.sort((a, b) => {
-    const aHasMessage = a.lastMessage && a.lastMessageTime
-    const bHasMessage = b.lastMessage && b.lastMessageTime
+  // 2. Separate the remaining users into online and offline groups
+  const onlineUsers = otherUsers.filter(user => user.isOnline);
+  const offlineUsers = otherUsers.filter(user => !user.isOnline);
+
+  // 3. Define a reusable sorting function
+  const sortUsers = (a, b) => {
+    const aHasMessage = a.lastMessage && a.lastMessageTime;
+    const bHasMessage = b.lastMessage && b.lastMessageTime;
 
     if (aHasMessage && bHasMessage) {
-      const timeA = new Date(a.lastMessageTime)
-      const timeB = new Date(b.lastMessageTime)
-      return timeB - timeA
+      const timeA = new Date(a.lastMessageTime);
+      const timeB = new Date(b.lastMessageTime);
+      return timeB - timeA; // Sort by most recent message first
+    }
+    if (aHasMessage) return -1; // Users with messages come before users without
+    if (bHasMessage) return 1;
+    return a.nickname.localeCompare(b.nickname); // Fallback to alphabetical sorting
+  };
+
+  // 4. Sort both lists independently
+  onlineUsers.sort(sortUsers);
+  offlineUsers.sort(sortUsers);
+
+  // 5. Define a function to render a list of users into a given element
+  const renderUserGroup = (users, element) => {
+    if (users.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "None";
+      li.style.padding = "var(--space-4)";
+      li.style.color = "var(--text-muted)";
+      element.appendChild(li);
+      return;
     }
 
-    if (aHasMessage && !bHasMessage) {
-      return -1
-    }
+    users.forEach(user => {
+      const li = document.createElement("li");
+      li.classList.add("user-item");
+      li.dataset.userUuid = user.uuid;
 
-    if (!aHasMessage && bHasMessage) {
-      return 1
-    }
+      // Status indicator (green for online, white for offline)
+      const statusSpan = document.createElement("span");
+      statusSpan.classList.add("status");
+      statusSpan.textContent = user.isOnline ? "🟢" : "⚪";
 
-    return a.nickname.localeCompare(b.nickname)
-  })
-  console.log("otherusers in updateUserList()", otherUsers);
+      // Wrapper for nickname and message preview
+      const userInfoDiv = document.createElement('div');
+      userInfoDiv.style.display = 'flex';
+      userInfoDiv.style.flexDirection = 'column';
+      userInfoDiv.style.flex = 1; // Allow text to take up available space
 
-  otherUsers.forEach(user => {
-    const li = document.createElement("li")
-    li.classList.add("user-item")
+      const nicknameSpan = document.createElement("span");
+      nicknameSpan.classList.add("nickname");
+      nicknameSpan.textContent = user.nickname;
+      userInfoDiv.appendChild(nicknameSpan);
 
-    // Store user UUID as data attribute for easy access
-    li.dataset.userUuid = user.uuid;
+      // Display a preview of the last message if it exists
+      if (user.lastMessage) {
+        const previewSpan = document.createElement("span");
+        previewSpan.classList.add("message-preview");
+        const preview = user.lastMessage.length > 30 ?
+          user.lastMessage.substring(0, 30) + "..." :
+          user.lastMessage;
+        previewSpan.textContent = preview;
+        userInfoDiv.appendChild(previewSpan);
+      }
 
-    // Create status indicator
-    const statusSpan = document.createElement("span")
-    statusSpan.classList.add("status")
-    statusSpan.textContent = user.isOnline ? "🟢" : "⚪"
+      li.appendChild(statusSpan);
+      li.appendChild(userInfoDiv);
 
-    // Create nickname span
-    const nicknameSpan = document.createElement("span")
-    nicknameSpan.classList.add("nickname")
-    nicknameSpan.textContent = user.nickname
+      // Set click event to open chat with this user
+      li.onclick = () => {
+        openChat(user.uuid);
+        showChatPopup();
+      };
 
-    // Create last message preview (if exists)
-    const previewSpan = document.createElement("span")
-    previewSpan.classList.add("message-preview")
-    if (user.lastMessage) {
-      const preview = user.lastMessage.length > 30
-        ? user.lastMessage.substring(0, 30) + "..."
-        : user.lastMessage
-      previewSpan.textContent = preview
-    }
+      // Highlight the user if they are the currently active chat partner
+      if (user.uuid === chatWith) {
+        li.classList.add('active');
+      }
 
-    // Assemble the list item
-    li.appendChild(statusSpan)
-    li.appendChild(nicknameSpan)
-    if (user.lastMessage) {
-      li.appendChild(document.createElement("br"))
-      li.appendChild(previewSpan)
-    }
+      element.appendChild(li);
+    });
+  };
 
-    // Add click handler
-    li.onclick = () => {
-      console.log("User clicked:", user.nickname, user.uuid);
-      openChat(user.uuid);
-      showChatPopup();
-    }
+  // 6. Render both the online and offline user lists
+  renderUserGroup(onlineUsers, onlineList);
+  renderUserGroup(offlineUsers, offlineList);
 
-    // Highlight if this is the currently active chat
-    if (user.uuid === chatWith) {
-      li.classList.add('active');
-    }
-
-    list.appendChild(li)
-  })
-
-  console.log("Updated user list with", otherUsers.length, "users")
+  console.log(`Updated user list: ${onlineUsers.length} online, ${offlineUsers.length} offline.`);
 }
+
 function setupMessageInput() {
   const chatInput = document.getElementById("chat-input");
   if (!chatInput) {
