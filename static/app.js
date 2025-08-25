@@ -485,68 +485,59 @@ function connectWebSocket() {
     console.log("WebSocket connected successfully")
   }
 
-  socket.onmessage = (event) => {
-    console.log("WebSocket message received:", event.data);
-
+  socket.onmessage = function (event) {
     try {
-      const data = JSON.parse(event.data)
-      console.log("Parsed WebSocket data:", data);
+      const data = JSON.parse(event.data);
+      console.log("WebSocket message received:", data);
 
+      if (data.type === "force_logout") {
+        alert("You have been logged out.");
+        currentUserUUID = "";
+        allUsers = [];
+        showLoginUI(); // Switch to login screen immediately
+        return;
+      }
 
       if (data.type === "user_registered") {
         const u = data.user;
         const newUser = {
-          uuid: u.user_uuid, // map field
+          uuid: u.user_uuid,
           nickname: u.nickname,
           isOnline: u.IsOnline || false,
           lastMessage: "",
           lastMessageTime: null
         };
-        console.log("newUser.uuid ", newUser.uuid);
-
         allUsers.push(newUser);
-        console.log("--------", allUsers);
-
         updateUserList(data.users);
       } else if (data.type === "user_list") {
-        console.log("Received user list update",);
-        renderOnlineUsers(data.users)
+        renderOnlineUsers(data.users);
       } else if (data.type === "typing_start") {
-        console.log("User started typing:", data.nickname);
-        // Only show typing indicator if it's from the current chat partner
         if (data.from === chatWith) {
           typingUsers.set(data.from, { nickname: data.nickname, isTyping: true });
           showTypingIndicator(data.nickname);
         }
       } else if (data.type === "typing_stop") {
-        console.log("User stopped typing:", data.nickname);
-        // Only hide typing indicator if it's from the current chat partner
         if (data.from === chatWith) {
           typingUsers.delete(data.from);
           hideTypingIndicator();
         }
       } else {
-        console.log("Received chat message");
-        // This is a chat message - hide typing indicator when message arrives
-        if (data.from === chatWith) {
-          hideTypingIndicator();
-        }
-        renderIncomingMessage(data)
+        if (data.from === chatWith) hideTypingIndicator();
+        renderIncomingMessage(data);
       }
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
     }
-  }
+  };
 
   socket.onerror = (error) => {
     console.error("WebSocket error:", error);
-  }
+  };
 
   socket.onclose = (event) => {
     console.log("WebSocket closed. Code:", event.code, "Reason:", event.reason);
-    console.log("Attempting to reconnect in 2 seconds...");
     setTimeout(connectWebSocket, 2000);
-  }
+  };
 }
 
 // Sending message

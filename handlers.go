@@ -196,33 +196,45 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 
 		sessionToken := cookie.Value
 
-		// Delete session from DB
+		// Get the session details first
+		session, err := GetSession(db, sessionToken)
+		if err != nil {
+			http.Error(w, "Invalid session", http.StatusUnauthorized)
+			return
+		}
+		userUUID := session.UserUUID
+
+		// Delete the session
 		err = DeleteSession(db, sessionToken)
 		if err != nil {
 			http.Error(w, "Error logging out", http.StatusInternalServerError)
 			return
 		}
 
-		// ✅ Close WS connections tied to this session
-		for _, conns := range clients {
+		// Push real-time logout event and close WS connections for this session
+		if conns, ok := clients[userUUID]; ok {
 			for c := range conns {
 				if c.SessionUUID == sessionToken {
-					log.Printf("Closing WS for user %s (session %s)", c.UserUUID, c.SessionUUID)
+					// Direct send before closing
+					logoutMsg, _ := json.Marshal(map[string]string{"type": "force_logout"})
+					c.Conn.WriteMessage(websocket.TextMessage, logoutMsg)
 					c.Conn.Close()
 					delete(conns, c)
 				}
 			}
+			if len(conns) == 0 {
+				delete(clients, userUUID)
+			}
 		}
 
-		// Expire the session cookie
-		expiredCookie := &http.Cookie{
+		// Expire cookie
+		http.SetCookie(w, &http.Cookie{
 			Name:     "session_token",
 			Value:    "",
 			Path:     "/",
 			MaxAge:   -1,
 			HttpOnly: true,
-		}
-		http.SetCookie(w, expiredCookie)
+		})
 
 		w.Write([]byte("Logged out successfully"))
 	}
