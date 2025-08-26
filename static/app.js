@@ -543,7 +543,7 @@ function logout() {
     if (chatHistory) {
       chatHistory.innerHTML = "";
     }
-
+    closePostModal();
     // ✅ Always hide popup completely on logout
     hideChatPopup();
 
