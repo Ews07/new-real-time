@@ -626,3 +626,23 @@ func GetAllUsersHandler(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(users)
 	}
 }
+
+// NotFoundHandler: fallback to SPA
+func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+	http.ServeFile(w, r, "./static/index2.html")
+}
+
+// InternalErrorHandler for global recover
+func InternalErrorHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("Recovered from panic: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				http.ServeFile(w, r, "./static/index2.html")
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}

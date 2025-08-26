@@ -40,30 +40,17 @@ func main() {
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/index2.html")
 	})
-	// Custom 404 - let frontend handle it
+
+	// All unknown routes should fallback to SPA
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always serve index2.html so SPA can render its own 404 view
 		http.ServeFile(w, r, "./static/index2.html")
 	})
-
-	// Optional: wrap all handlers for 500 recovery
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				if rec := recover(); rec != nil {
-					log.Printf("Recovered from panic: %v", rec)
-					http.ServeFile(w, r, "./static/index2.html")
-				}
-			}()
-			next.ServeHTTP(w, r)
-		})
-	})
-
+	handler := InternalErrorHandler(r)
 	// Start server
 	go handleMessages(db)
 	go cleanupOldTypingStatus() // Add this line
 	log.Println("Starting server on http://localhost:8080")
-	err = http.ListenAndServe(":8080", r)
+	err = http.ListenAndServe(":8080", handler)
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
