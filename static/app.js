@@ -635,10 +635,9 @@ function openChat(userUUID) {
 
   // MODIFIED: Search both lists for the user item to remove unread indicator
   const onlineList = document.getElementById("online-users-list");
-  const offlineList = document.getElementById("offline-users-list");
-  let userItem = onlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  const allUsersList = document.getElementById("all-users-list"); let userItem = onlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
   if (!userItem) {
-    userItem = offlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+    userItem = allUsersList.querySelector(`li[data-user-uuid="${userUUID}"]`);
   }
   if (userItem) {
     userItem.classList.remove('has-unread');
@@ -826,10 +825,9 @@ function renderIncomingMessage(msg) {
 
     // MODIFIED: Find the user item in either the online or offline list
     const onlineList = document.getElementById("online-users-list");
-    const offlineList = document.getElementById("offline-users-list");
-    let userItem = onlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    const allUsersList = document.getElementById("all-users-list"); let userItem = onlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
     if (!userItem) {
-      userItem = offlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+      userItem = allUsersList.querySelector(`li[data-user-uuid="${msg.from}"]`);
     }
 
     if (userItem) {
@@ -883,23 +881,22 @@ function renderOnlineUsers(users) {
 // MODIFIED: This function now separates users into online and offline lists.
 function updateUserList() {
   const onlineList = document.getElementById("online-users-list");
-  const offlineList = document.getElementById("offline-users-list");
+  const allUsersList = document.getElementById("all-users-list");
 
-  if (!onlineList || !offlineList) {
-    console.error("User list elements ('online-users-list' or 'offline-users-list') not found");
+  if (!onlineList || !allUsersList) {
+    console.error("User list elements ('online-users-list' or 'all-users-list') not found");
     return;
   }
 
   onlineList.innerHTML = "";
-  offlineList.innerHTML = "";
+  allUsersList.innerHTML = "";
 
   // 1. Filter out the current user from the main list
   const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID);
 
   // 2. Separate the remaining users into online and offline groups
   const onlineUsers = otherUsers.filter(user => user.isOnline);
-  const offlineUsers = otherUsers.filter(user => !user.isOnline);
-
+  const allOtherUsers = [...otherUsers];
   // 3. Define a reusable sorting function
   const sortUsers = (a, b) => {
     const aHasMessage = a.lastMessage && a.lastMessageTime;
@@ -917,7 +914,7 @@ function updateUserList() {
 
   // 4. Sort both lists independently
   onlineUsers.sort(sortUsers);
-  offlineUsers.sort(sortUsers);
+  allOtherUsers.sort(sortUsers);
 
   // 5. Define a function to render a list of users into a given element
   const renderUserGroup = (users, element) => {
@@ -980,9 +977,9 @@ function updateUserList() {
     });
   };
 
-  // 6. Render both the online and offline user lists
+  // 6. Render both the online and all user lists
   renderUserGroup(onlineUsers, onlineList);
-  renderUserGroup(offlineUsers, offlineList);
+  renderUserGroup(allOtherUsers, allUsersList);
 
   console.log(`Updated user list: ${onlineUsers.length} online, ${offlineUsers.length} offline.`);
 }
