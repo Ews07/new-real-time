@@ -270,6 +270,7 @@ func GetCategoriesHandler(db *sql.DB) http.HandlerFunc {
 
 func CreatePostHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
 		userUUID, ok := UserUUIDFromContext(r.Context())
 		if !ok {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -289,6 +290,16 @@ func CreatePostHandler(db *sql.DB) http.HandlerFunc {
 		if req.Title == "" || req.Content == "" {
 			http.Error(w, "Title and content are required", http.StatusBadRequest)
 			return
+		}
+		if len(req.Categories) > 0 {
+			for _, category := range req.Categories {
+				var exists bool
+				err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM categories WHERE name = ?)", category).Scan(&exists)
+				if err != nil || !exists {
+					http.Error(w, fmt.Sprintf("Category '%s' does not exist", category), http.StatusBadRequest)
+					return
+				}
+			}
 		}
 
 		postUUID := uuid.New().String()
