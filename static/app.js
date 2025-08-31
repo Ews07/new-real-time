@@ -17,20 +17,24 @@ let chatScrollHandlerAttached = false;
 
 
 // Simple SPA router
-function navigate(path) {
+function navigate(path, isLoggedIn) {
   window.history.pushState({}, "", path);
-  renderRoute(path);
+  renderRoute(path, isLoggedIn);
 }
 
-function renderRoute(path) {
+function renderRoute(path, isLoggedIn = false) {
   if (path === "/") {
-    showChatUI();
+    if (isLoggedIn) {
+      showChatUI();
+    } else {
+      showLoginUI();
+    }
   } else if (path === "/login") {
     showLoginUI();
   } else if (path === "/register") {
     showRegisterUI();
   } else {
-    showNotFound(); // ✅ any unknown path
+    showErrorPage("404 - Not Found", "That page doesn’t exist.");
   }
 }
 
@@ -43,11 +47,11 @@ function showLoginUI() {
   document.getElementById("main-header").style.display = "none"
   document.getElementById("chat-popup").style.display = "none"
   document.getElementById("notification-popup").style.display = "none"
-  document.getElementById("error-container").style.display = "none";
+  document.getElementById("error-page").style.display = "none";
 }
 
 function showChatUI() {
-  document.getElementById("error-container").style.display = "none";
+  document.getElementById("error-page").style.display = "none";
   document.getElementById("login-section").style.display = "none"
   document.getElementById("register-section").style.display = "none"
   document.getElementById("main-header").style.display = "flex"
@@ -69,7 +73,14 @@ function showChatUI() {
 
 function populateCategoriesSelector() {
   fetch("/categories", { credentials: "include" })
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) {
+        handleHttpError(res);
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return res.json()
+
+    })
     .then(categories => {
       const select = document.getElementById("post-categories-select");
       select.innerHTML = ""; // Clear existing options
@@ -204,20 +215,29 @@ window.addEventListener("DOMContentLoaded", () => {
     credentials: "include"
   })
     .then(res => {
-      if (!res.ok) throw new Error("Not logged in")
+      if (!res.ok) {
+        handleHttpError(res);
+        throw new Error(`HTTP ${res.status}`);
+      }
       return res.json()
+
     })
     .then(data => {
+
       console.log("User authenticated:", data);
       currentUserUUID = data.user_uuid
       updateWelcomeMessage(data.nickname);
-      showChatUI()
+      console.log("11111111111111111111111111");
+
+      renderRoute(window.location.pathname, true);
       connectWebSocket()
+
     })
     .catch((error) => {
-      console.log("User not authenticated:", error);
-      showLoginUI()
+      console.log("2222222222222222222222222222");
+      renderRoute(window.location.pathname);
     })
+
 
   // Login form submit
   const loginForm = document.getElementById("login-form");
@@ -297,7 +317,8 @@ window.addEventListener("DOMContentLoaded", () => {
           document.getElementById("comment-text").value = ""
           openPostView(currentPostUUID) // reload comments
         } else {
-          res.text().then(alert)
+          handleHttpError(res);
+          throw new Error(`HTTP ${res.status}`);
         }
       })
     })
@@ -417,7 +438,10 @@ function login() {
     body: JSON.stringify({ identifier, password })
   })
     .then(res => {
-      if (!res.ok) throw new Error("Login failed")
+      if (!res.ok) {
+        handleHttpError(res);
+        throw new Error(`HTTP ${res.status}`);
+      }
       return res.text()
     })
     .then(() => {
@@ -426,7 +450,13 @@ function login() {
         method: "GET",
         credentials: "include"
       })
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) {
+            handleHttpError(res);
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return res.json()
+        })
         .then(data => {
           currentUserUUID = data.user_uuid
           updateWelcomeMessage(data.nickname);
@@ -462,7 +492,8 @@ function register() {
       // alert("Registered! Now login.")
       showLoginUI()
     } else {
-      res.text().then(alert)
+      handleHttpError(res);
+      throw new Error(`HTTP ${res.status}`);
     }
   })
 }
@@ -512,7 +543,7 @@ function logout() {
     if (chatHistory) {
       chatHistory.innerHTML = "";
     }
-
+    closePostModal();
     // ✅ Always hide popup completely on logout
     hideChatPopup();
 
@@ -635,7 +666,8 @@ function openChat(userUUID) {
 
   // MODIFIED: Search both lists for the user item to remove unread indicator
   const onlineList = document.getElementById("online-users-list");
-  const allUsersList = document.getElementById("all-users-list"); let userItem = onlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  const allUsersList = document.getElementById("all-users-list");
+  let userItem = onlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
   if (!userItem) {
     userItem = allUsersList.querySelector(`li[data-user-uuid="${userUUID}"]`);
   }
@@ -825,7 +857,8 @@ function renderIncomingMessage(msg) {
 
     // MODIFIED: Find the user item in either the online or offline list
     const onlineList = document.getElementById("online-users-list");
-    const allUsersList = document.getElementById("all-users-list"); let userItem = onlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    const allUsersList = document.getElementById("all-users-list");
+    let userItem = onlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
     if (!userItem) {
       userItem = allUsersList.querySelector(`li[data-user-uuid="${msg.from}"]`);
     }
@@ -884,7 +917,7 @@ function updateUserList() {
   const allUsersList = document.getElementById("all-users-list");
 
   if (!onlineList || !allUsersList) {
-    console.error("User list elements ('online-users-list' or 'all-users-list') not found");
+    console.error("User list elements ('online-users-list' or 'offline-users-list') not found");
     return;
   }
 
@@ -981,7 +1014,7 @@ function updateUserList() {
   renderUserGroup(onlineUsers, onlineList);
   renderUserGroup(allOtherUsers, allUsersList);
 
-  console.log(`Updated user list: ${onlineUsers.length} online, ${offlineUsers.length} offline.`);
+  console.log(`Updated user list: ${onlineUsers.length} online, ${allOtherUsers.length} offline.`);
 }
 
 function setupMessageInput() {
@@ -1117,7 +1150,14 @@ function initializeChatInput() {
 }
 function fetchCategories() {
   fetch("/categories", { credentials: "include" })
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) {
+        handleHttpError(res);
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return res.json()
+
+    })
     .then(categories => {
       const categoryFilter = document.getElementById("category-filter");
       categoryFilter.innerHTML = `
@@ -1327,7 +1367,8 @@ function submitPost() {
     .then(res => {
       if (!res.ok) {
         // If the server returns an error, show it to the user
-        return res.text().then(text => { throw new Error(text) });
+        handleHttpError(res);
+        throw new Error(`HTTP ${res.status}`);
       }
       return res.text();
     })
@@ -1430,37 +1471,79 @@ function hideTypingIndicator() {
   }
 }
 
-function showNotFound() {
-  const errorDiv = document.getElementById("error-container");
-  errorDiv.style.display = "block";
-  errorDiv.innerHTML = `
-    <div class="error-page">
-      <h1>404</h1>
-      <p>Oops! The page you are looking for does not exist.</p>
-      <button onclick="navigate('/')">Go Home</button>
-    </div>
-  `;
+// Centralized error handler for HTTP responses
+function handleHttpError(res) {
+  let title, message;
 
-  // hide other sections
-  document.getElementById("login-section").style.display = "none";
-  document.getElementById("register-section").style.display = "none";
-  document.getElementById("forum-view").style.display = "none";
+  switch (res.status) {
+    case 400:
+      title = "400 - Bad Request";
+      message = "The request was invalid.";
+      break;
+    case 401:
+      title = "401 - Unauthorized";
+      message = "You must log in to access this resource.";
+      break;
+    case 403:
+      title = "403 - Forbidden";
+      message = "You don’t have permission to access this resource.";
+      break;
+    case 404:
+      title = "404 - Not Found";
+      message = "That page doesn’t exist.";
+      break;
+    case 409:
+      title = "409 - Conflict";
+      message = "A conflict occurred (maybe user already exists).";
+      break;
+    case 500:
+      title = "500 - Server Error";
+      message = "Something went wrong on our side.";
+      break;
+    default:
+      title = `${res.status} - Error`;
+      message = "Unexpected problem occurred.";
+  }
+
+  showErrorPage(title, message);
 }
 
-function showServerError() {
-  const errorDiv = document.getElementById("error-container");
-  errorDiv.style.display = "block";
-  errorDiv.innerHTML = `
-    <div class="error-page">
-      <h1>500</h1>
-      <p>Something went wrong on our side. Please try again later.</p>
-      <button onclick="navigate('/')">Go Home</button>
-    </div>
-  `;
-
+function showErrorPage(title, message) {
+  // Hide other sections to only show error
   document.getElementById("login-section").style.display = "none";
   document.getElementById("register-section").style.display = "none";
   document.getElementById("forum-view").style.display = "none";
+  document.getElementById("main-header").style.display = "none";
+  document.getElementById("chat-popup").style.display = "none";
+  document.getElementById("notification-popup").style.display = "none";
+
+
+  const errorPage = document.getElementById("error-page");
+  errorPage.style.display = "block";
+
+  document.getElementById("error-title").innerText = title;
+  document.getElementById("error-message").innerText = message;
+
+  // Attach back home handler
+  const backBtn = document.getElementById("back-home-btn");
+  if (backBtn) {
+    backBtn.onclick = () => {
+      fetch("/me", { credentials: "include" })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data) {
+            currentUserUUID = data.user_uuid;
+            updateWelcomeMessage(data.nickname);
+            navigate("/", true);   // logged in → go to chat UI
+          } else {
+            navigate("/", false);  // not logged in → go to login UI
+          }
+        })
+        .catch(() => {
+          navigate("/", false);
+        });
+    };
+  }
 }
 
 // Handle back/forward
@@ -1468,7 +1551,8 @@ window.addEventListener("popstate", () => {
   renderRoute(window.location.pathname);
 });
 
-// Initial load
-document.addEventListener("DOMContentLoaded", () => {
-  renderRoute(window.location.pathname);
-});
+// // Initial load
+// document.addEventListener("DOMContentLoaded", () => {
+//   renderRoute(window.location.pathname);
+// });
+

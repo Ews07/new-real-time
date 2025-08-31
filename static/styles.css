@@ -1443,7 +1443,7 @@ textarea:focus::placeholder {
   height: 100vh;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(10px);
-  z-index: 4000;
+  z-index: 999;
   display: flex;
   align-items: center;
   justify-content: center;
