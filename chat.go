@@ -1,5 +1,3 @@
-// chat.go
-
 package main
 
 import (
@@ -14,16 +12,17 @@ import (
 )
 
 var (
-	clients     = make(map[string]*Client)        // key = user UUID
-	broadcast   = make(chan Message)              // channel for incoming messages
-	onlineUsers = make(map[string]*UserPresence)  // key = userUUID
-	typingUsers = make(map[*Client]*TypingStatus) // key = userUUID
+	clients     = make(map[string]map[*Client]bool) // Each user can have multiple active connections
+	broadcast   = make(chan Message)                // channel for incoming messages
+	onlineUsers = make(map[string]*UserPresence)    // key = userUUID
+	typingUsers = make(map[*Client]*TypingStatus)   // key = userUUID
 )
 
 type Client struct {
-	Conn     *websocket.Conn
-	UserUUID string
-	Send     chan []byte
+	Conn        *websocket.Conn
+	UserUUID    string
+	SessionUUID string
+	Send        chan []byte
 }
 
 type Message struct {
@@ -91,15 +90,17 @@ func handleMessages(db *sql.DB) {
 		}
 
 		// If receiver is online, send the message directly.
-		if client, ok := clients[msg.To]; ok {
-			log.Printf("BROADCAST: Message from %s to %s. Sending to Websockets.", msg.From, msg.To)
-			client.Send <- data
+		if receivers, ok := clients[msg.To]; ok {
+			for c := range receivers {
+				c.Send <- data
+			}
 		}
 
 		// Send back to sender as confirmation.
-		if sender, ok := clients[msg.From]; ok {
-			log.Printf("BROADCAST: Message from %s to %s. Sending to Websockets.", msg.From, msg.To)
-			sender.Send <- data
+		if senders, ok := clients[msg.From]; ok {
+			for c := range senders {
+				c.Send <- data
+			}
 		}
 
 		// --- REMOVED ---
@@ -108,43 +109,43 @@ func handleMessages(db *sql.DB) {
 
 		// Instead, we now generate and send personalized user lists to the participants.
 		sendPersonalizedUserLists(db, msg.From, msg.To)
-		
+
 	}
 }
 
 // NEW HELPER FUNCTION: Generates a contextual user list for a specific user.
 func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) {
+	rows, err := db.Query(`SELECT uuid, nickname FROM users WHERE uuid != ?`, viewerUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	users := []UserPresence{}
 
-	// Iterate over a copy of the keys to avoid race conditions if the map is modified elsewhere
-	userUUIDs := make([]string, 0, len(onlineUsers))
-	for k := range onlineUsers {
-		userUUIDs = append(userUUIDs, k)
-	}
-
-	for _, otherUserUUID := range userUUIDs {
-		// We don't need to show the viewer themselves in the list.
-		if otherUserUUID == viewerUUID {
-			continue
+	for rows.Next() {
+		var uuid string
+		var nickname string
+		if err := rows.Scan(&uuid, &nickname); err != nil {
+			return nil, err
 		}
 
-		presenceInfo, ok := onlineUsers[otherUserUUID]
-		if !ok {
-			continue // Should not happen, but safe to check
+		// Is this user online?
+		isOnline := false
+		if presence, ok := onlineUsers[uuid]; ok {
+			isOnline = presence.IsOnline
 		}
 
-		// Get the last message specifically between the viewer and this other user
-		lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, otherUserUUID)
+		// Get last message between viewer and this user
+		lastMsg, lastTime := getLastMessageBetweenUsers(db, viewerUUID, uuid)
 
-		// Create a new UserPresence struct with the correct contextual data
-		contextualPresence := UserPresence{
-			UserUUID:        presenceInfo.UserUUID,
-			Nickname:        presenceInfo.Nickname,
-			IsOnline:        presenceInfo.IsOnline,
+		users = append(users, UserPresence{
+			UserUUID:        uuid,
+			Nickname:        nickname,
+			IsOnline:        isOnline,
 			LastMessage:     lastMsg,
 			LastMessageTime: lastTime,
-		}
-		users = append(users, contextualPresence)
+		})
 	}
 
 	// Sort the personalized list
@@ -169,27 +170,41 @@ func generateUserListFor(db *sql.DB, viewerUUID string) ([]UserPresence, error) 
 
 // MODIFIED FUNCTION: Renamed from sendOnlineUsersToAll and logic changed
 func sendPersonalizedUserLists(db *sql.DB, senderUUID, receiverUUID string) {
-	// Generate and send the list for the SENDER
-	if client, ok := clients[senderUUID]; ok {
+	// Generate and send the list for the SENDER (all tabs/windows)
+	if conns, ok := clients[senderUUID]; ok {
 		userList, err := generateUserListFor(db, senderUUID)
 		if err != nil {
 			log.Printf("Error generating user list for sender %s: %v", senderUUID, err)
 		} else {
 			data := map[string]interface{}{"type": "user_list", "users": userList}
 			encoded, _ := json.Marshal(data)
-			client.Send <- encoded
+
+			for client := range conns {
+				select {
+				case client.Send <- encoded:
+				default:
+					log.Printf("Sender %s connection skipped (channel full)", senderUUID)
+				}
+			}
 		}
 	}
 
-	// Generate and send the list for the RECEIVER
-	if client, ok := clients[receiverUUID]; ok {
+	// Generate and send the list for the RECEIVER (all tabs/windows)
+	if conns, ok := clients[receiverUUID]; ok {
 		userList, err := generateUserListFor(db, receiverUUID)
 		if err != nil {
 			log.Printf("Error generating user list for receiver %s: %v", receiverUUID, err)
 		} else {
 			data := map[string]interface{}{"type": "user_list", "users": userList}
 			encoded, _ := json.Marshal(data)
-			client.Send <- encoded
+
+			for client := range conns {
+				select {
+				case client.Send <- encoded:
+				default:
+					log.Printf("Receiver %s connection skipped (channel full)", receiverUUID)
+				}
+			}
 		}
 	}
 }
@@ -223,14 +238,14 @@ func loadUserPresenceFromDB(db *sql.DB, userUUID string) {
 
 // MODIFIED: This function now sends personalized lists to ALL connected clients.
 func sendOnlineUsersToAllConnected(db *sql.DB) {
-	// Loop through all connected clients
-	for uuid, client := range clients {
-		userList, err := generateUserListFor(db, uuid)
+	for userUUID, conns := range clients {
+		userList, err := generateUserListFor(db, userUUID)
 		if err != nil {
-			log.Printf("Error generating user list for %s on global update: %v", uuid, err)
+			log.Printf("Error generating user list for %s on global update: %v", userUUID, err)
 			continue
 		}
 
+		// Build response
 		data := map[string]interface{}{
 			"type":  "user_list",
 			"users": userList,
@@ -242,21 +257,34 @@ func sendOnlineUsersToAllConnected(db *sql.DB) {
 			continue
 		}
 
-		select {
-		case client.Send <- encoded:
-		default:
-			log.Printf("Skipping blocked client during global update: %s", client.UserUUID)
+		// Send to ALL connections for this user (all tabs/windows)
+		for client := range conns {
+			select {
+			case client.Send <- encoded:
+				log.Printf("Sent full user_list to %s (total users: %d)", userUUID, len(userList))
+			default:
+				log.Printf("Skipping blocked client during global update: %s (one of multiple connections)", client.UserUUID)
+			}
 		}
 	}
 }
 
 // MODIFIED: readPump and writePump need to pass the *sql.DB to sendOnlineUsersToAllConnected
 func readPump(db *sql.DB, client *Client) {
+	_, err := GetSession(db, client.SessionUUID)
+	if err != nil {
+		log.Printf("Invalid session %s for user %s, closing WS", client.SessionUUID, client.UserUUID)
+		return // ✅ end readPump immediately, defer cleanup runs
+	}
+
 	defer func() {
 		client.Conn.Close()
-		delete(clients, client.UserUUID)
-		if u, ok := onlineUsers[client.UserUUID]; ok {
-			u.IsOnline = false
+		delete(clients[client.UserUUID], client)
+		if len(clients[client.UserUUID]) == 0 {
+			delete(clients, client.UserUUID)
+			if u, ok := onlineUsers[client.UserUUID]; ok {
+				u.IsOnline = false
+			}
 		}
 
 		// If this client was typing, tell the recipient to stop
@@ -267,13 +295,19 @@ func readPump(db *sql.DB, client *Client) {
 				To:       status.TypingTo,
 				Nickname: status.Nickname,
 			}
-			if targetClient, ok := clients[status.TypingTo]; ok {
+
+			if conns, ok := clients[status.TypingTo]; ok {
 				if data, err := json.Marshal(typingStopMsg); err == nil {
-					targetClient.Send <- data
+					for targetConn := range conns {
+						select {
+						case targetConn.Send <- data:
+						default:
+							log.Printf("Skipping blocked client %s during typing_stop", status.TypingTo)
+						}
+					}
 				}
 			}
 		}
-
 		// Clean up typing status when user disconnects
 		delete(typingUsers, client)
 		log.Printf("User %s disconnected. Total clients: %d", client.UserUUID, len(clients))
@@ -283,6 +317,14 @@ func readPump(db *sql.DB, client *Client) {
 	}()
 
 	for {
+		// ✅ Check session validity each loop
+		_, err := GetSession(db, client.SessionUUID)
+		if err != nil {
+			log.Printf("Session expired or invalid for %s, closing WS", client.UserUUID)
+			client.Conn.Close()
+			break
+		}
+
 		// Read raw JSON message
 		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
@@ -344,6 +386,7 @@ func readPump(db *sql.DB, client *Client) {
 		}
 	}
 }
+
 func writePump(client *Client) {
 	for {
 		msg, ok := <-client.Send
@@ -370,19 +413,20 @@ func handleTypingMessage(client *Client, msg TypingMessage) {
 		delete(typingUsers, client)
 	}
 
-	// Send typing status to the target user
-	if targetClient, ok := clients[msg.To]; ok {
+	// Send typing status to ALL connections of the target user
+	if targets, ok := clients[msg.To]; ok {
 		data, err := json.Marshal(msg)
 		if err != nil {
 			log.Println("Error marshaling typing message:", err)
 			return
 		}
 
-		select {
-		case targetClient.Send <- data:
-			log.Printf("Sent typing status to %s", msg.To)
-		default:
-			log.Printf("Failed to send typing status to %s (channel blocked)", msg.To)
+		for c := range targets {
+			select {
+			case c.Send <- data:
+			default:
+				log.Printf("Failed to send typing status to %s (channel blocked)", msg.To)
+			}
 		}
 	}
 }
@@ -394,10 +438,10 @@ func cleanupOldTypingStatus() {
 
 	for range ticker.C {
 		now := time.Now()
-		for userUUID, status := range typingUsers {
+		for client, status := range typingUsers {
 			if now.Sub(status.LastSeen) > 15*time.Second {
-				log.Printf("Cleaning up stale typing status for user %s", userUUID)
-				delete(typingUsers, userUUID)
+				log.Printf("Cleaning up stale typing status for client %s (user %s)", client.UserUUID, status.UserUUID)
+				delete(typingUsers, client)
 			}
 		}
 	}

@@ -389,17 +389,22 @@ button.btn-secondary:hover {
   align-items: center;
   justify-content: center;
   padding: 0;
+  font-size: var(--text-xl);
 }
 
-#toggle-theme-btn::after {
-  content: '🌙';
-  font-size: var(--text-lg);
-  transition: all var(--duration-300) var(--ease-elastic);
+/* Hide the moon icon by default (in dark mode) */
+#toggle-theme-btn #moon-icon {
+  display: none;
 }
 
-body.light-mode #toggle-theme-btn::after {
-  content: '☀️';
-  transform: rotate(180deg);
+/* Hide the sun icon when light-mode class is active */
+body.light-mode #toggle-theme-btn #sun-icon {
+  display: none;
+}
+
+/* Show the moon icon when light-mode class is active */
+body.light-mode #toggle-theme-btn #moon-icon {
+  display: inline;
 }
 
 /* Container with Enhanced Layout */

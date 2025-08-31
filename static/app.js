@@ -15,6 +15,26 @@ let currentCategory = "";
 let isLoadingMessages = false;
 let chatScrollHandlerAttached = false;
 
+
+// Simple SPA router
+function navigate(path) {
+  window.history.pushState({}, "", path);
+  renderRoute(path);
+}
+
+function renderRoute(path) {
+  if (path === "/") {
+    showChatUI();
+  } else if (path === "/login") {
+    showLoginUI();
+  } else if (path === "/register") {
+    showRegisterUI();
+  } else {
+    showNotFound(); // ✅ any unknown path
+  }
+}
+
+
 // SPA View Switcher
 function showLoginUI() {
   document.getElementById("login-section").style.display = "block"
@@ -23,16 +43,17 @@ function showLoginUI() {
   document.getElementById("main-header").style.display = "none"
   document.getElementById("chat-popup").style.display = "none"
   document.getElementById("notification-popup").style.display = "none"
+  document.getElementById("error-container").style.display = "none";
 }
 
 function showChatUI() {
+  document.getElementById("error-container").style.display = "none";
   document.getElementById("login-section").style.display = "none"
   document.getElementById("register-section").style.display = "none"
   document.getElementById("main-header").style.display = "flex"
   document.getElementById("forum-view").style.display = "block"
   document.getElementById("chat-popup").style.display = "flex"
   document.getElementById("notification-popup").style.display = "flex"
-
   resetPostFeed()
   // fetchAllUsers()
 
@@ -472,13 +493,57 @@ function logout() {
     method: "POST",
     credentials: "include",
   }).then(() => {
-    socket?.close()
-    showLoginUI()
-  })
+    // Close WebSocket
+    if (socket) {
+      socket.close();
+      socket = null;
+    }
+
+    // Reset app state
+    currentUserUUID = "";
+    chatWith = "";
+    messagesOffset = 0;
+    isCurrentlyTyping = false;
+    typingUsers.clear();
+    allUsers = [];
+
+    // Clear chat history (only messages, keep structure intact)
+    const chatHistory = document.getElementById("chat-history");
+    if (chatHistory) {
+      chatHistory.innerHTML = "";
+    }
+
+    // ✅ Always hide popup completely on logout
+    hideChatPopup();
+
+    // Reset user list
+    const userList = document.getElementById("all-users");
+    if (userList) {
+      userList.innerHTML = "";
+    }
+
+    // Show login page
+    showLoginUI();
+  });
 }
+
+
 
 // WebSocket
 function connectWebSocket() {
+  // Cleanup old socket before making a new one
+  if (socket) {
+    try {
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.close();
+    } catch (e) {
+      console.warn("Error cleaning old socket:", e);
+    }
+    socket = null;
+  }
+
   console.log("Attempting to connect WebSocket...");
   socket = new WebSocket("ws://localhost:8080/ws")
 
@@ -486,64 +551,71 @@ function connectWebSocket() {
     console.log("WebSocket connected successfully")
   }
 
-  socket.onmessage = (event) => {
-    console.log("WebSocket message received:", event.data);
-
+  socket.onmessage = function (event) {
     try {
-      const data = JSON.parse(event.data)
-      console.log("Parsed WebSocket data:", data);
+      const data = JSON.parse(event.data);
+      console.log("WebSocket message received:", data);
 
-      if (data.type === "user_list") {
-        console.log("Received user list update");
-        renderOnlineUsers(data.users)
+      if (data.type === "force_logout") {
+        alert("You have been logged out.");
+        currentUserUUID = "";
+        allUsers = [];
+        showLoginUI(); // Switch to login screen immediately
+        return;
+      } else if (data.type === "user_registered") {
+        const u = data.user;
+        const newUser = {
+          uuid: u.user_uuid,
+          nickname: u.nickname,
+          isOnline: false,
+          lastMessage: "",
+          lastMessageTime: null
+        };
+        allUsers.push(newUser);
+        updateUserList(data.users);
+      } else if (data.type === "user_list") {
+        renderOnlineUsers(data.users);
       } else if (data.type === "typing_start") {
-        console.log("User started typing:", data.nickname);
-        // Only show typing indicator if it's from the current chat partner
         if (data.from === chatWith) {
           typingUsers.set(data.from, { nickname: data.nickname, isTyping: true });
           showTypingIndicator(data.nickname);
         }
       } else if (data.type === "typing_stop") {
-        console.log("User stopped typing:", data.nickname);
-        // Only hide typing indicator if it's from the current chat partner
         if (data.from === chatWith) {
           typingUsers.delete(data.from);
           hideTypingIndicator();
         }
       } else {
-        console.log("Received chat message");
-        // This is a chat message - hide typing indicator when message arrives
-        if (data.from === chatWith) {
-          hideTypingIndicator();
-        }
-        renderIncomingMessage(data)
+        if (data.from === chatWith) hideTypingIndicator();
+        console.log("message dat in socket:::::", data);
+
+        renderIncomingMessage(data);
       }
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
     }
-  }
+  };
 
   socket.onerror = (error) => {
     console.error("WebSocket error:", error);
-  }
+  };
 
   socket.onclose = (event) => {
     console.log("WebSocket closed. Code:", event.code, "Reason:", event.reason);
-    console.log("Attempting to reconnect in 2 seconds...");
     setTimeout(connectWebSocket, 2000);
-  }
+  };
 }
 
-// Sending message
-document.getElementById("chat-input").addEventListener("keydown", function (e) {
-  if (e.key === "Enter") {
-    const content = this.value.trim()
-    if (!content || !chatWith) return
-    const msg = { to: chatWith, content: content }
-    socket.send(JSON.stringify(msg))
-    this.value = ""
-  }
-})
+// // Sending message
+// document.getElementById("chat-input").addEventListener("keydown", function (e) {
+//   if (e.key === "Enter") {
+//     const content = this.value.trim()
+//     if (!content || !chatWith) return
+//     const msg = { to: chatWith, content: content }
+//     socket.send(JSON.stringify(msg))
+//     this.value = ""
+//   }
+// })
 
 // Load Chat History
 function openChat(userUUID) {
@@ -561,9 +633,12 @@ function openChat(userUUID) {
   showChatPopup();
   updateChatPopupTitle(nickname);
 
-  // Remove unread indicator when opening a chat
-  const userList = document.getElementById("all-users");
-  const userItem = userList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  // MODIFIED: Search both lists for the user item to remove unread indicator
+  const onlineList = document.getElementById("online-users-list");
+  const allUsersList = document.getElementById("all-users-list"); let userItem = onlineList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  if (!userItem) {
+    userItem = allUsersList.querySelector(`li[data-user-uuid="${userUUID}"]`);
+  }
   if (userItem) {
     userItem.classList.remove('has-unread');
   }
@@ -573,14 +648,11 @@ function openChat(userUUID) {
     item.classList.remove('active');
   });
 
-  // Find and highlight the clicked user
-  const userItems = document.querySelectorAll('.user-item');
-  userItems.forEach(item => {
-    // Check if this item's onclick contains the userUUID
-    if (item.onclick && item.onclick.toString().includes(userUUID)) {
-      item.classList.add('active');
-    }
-  });
+  // Re-select the correct user item after clearing all
+  if (userItem) {
+    userItem.classList.add('active');
+  }
+
 
   // Set the chat target
   chatWith = userUUID;
@@ -741,6 +813,7 @@ function renderIncomingMessage(msg) {
 
     const messageEl = createMessageElement(msg);
     chatHistory.appendChild(messageEl);
+    console.log("message data in renderIncomingMessage", msg);
 
     // Auto-scroll to the bottom to show the new message
     chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -750,10 +823,13 @@ function renderIncomingMessage(msg) {
   // This block runs for any message received from another person.
   if (msg.from !== currentUserUUID) {
 
-    // 3a. Add the persistent "unread dot" indicator to the user in the list.
-    // This happens whether the pop-up appears or not. It marks the conversation as having new messages.
-    const userList = document.getElementById("all-users");
-    const userItem = userList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    // MODIFIED: Find the user item in either the online or offline list
+    const onlineList = document.getElementById("online-users-list");
+    const allUsersList = document.getElementById("all-users-list"); let userItem = onlineList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    if (!userItem) {
+      userItem = allUsersList.querySelector(`li[data-user-uuid="${msg.from}"]`);
+    }
+
     if (userItem) {
       userItem.classList.add('has-unread');
     }
@@ -802,95 +878,112 @@ function renderOnlineUsers(users) {
 }
 
 
-// Render all users in the user list
-// Render all users in the user list with proper sorting
+// MODIFIED: This function now separates users into online and offline lists.
 function updateUserList() {
-  const list = document.getElementById("all-users")
-  if (!list) {
-    console.error("all-users element not found")
-    return
+  const onlineList = document.getElementById("online-users-list");
+  const allUsersList = document.getElementById("all-users-list");
+
+  if (!onlineList || !allUsersList) {
+    console.error("User list elements ('online-users-list' or 'all-users-list') not found");
+    return;
   }
 
-  list.innerHTML = ""
+  onlineList.innerHTML = "";
+  allUsersList.innerHTML = "";
 
-  // Filter out current user and sort the list
-  const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID)
-  console.log("Other users to display:", otherUsers);
+  // 1. Filter out the current user from the main list
+  const otherUsers = allUsers.filter(user => user.uuid !== currentUserUUID);
 
-  // Sort users the same way as backend
-  otherUsers.sort((a, b) => {
-    const aHasMessage = a.lastMessage && a.lastMessageTime
-    const bHasMessage = b.lastMessage && b.lastMessageTime
+  // 2. Separate the remaining users into online and offline groups
+  const onlineUsers = otherUsers.filter(user => user.isOnline);
+  const allOtherUsers = [...otherUsers];
+  // 3. Define a reusable sorting function
+  const sortUsers = (a, b) => {
+    const aHasMessage = a.lastMessage && a.lastMessageTime;
+    const bHasMessage = b.lastMessage && b.lastMessageTime;
 
     if (aHasMessage && bHasMessage) {
-      const timeA = new Date(a.lastMessageTime)
-      const timeB = new Date(b.lastMessageTime)
-      return timeB - timeA
+      const timeA = new Date(a.lastMessageTime);
+      const timeB = new Date(b.lastMessageTime);
+      return timeB - timeA; // Sort by most recent message first
+    }
+    if (aHasMessage) return -1; // Users with messages come before users without
+    if (bHasMessage) return 1;
+    return a.nickname.localeCompare(b.nickname); // Fallback to alphabetical sorting
+  };
+
+  // 4. Sort both lists independently
+  onlineUsers.sort(sortUsers);
+  allOtherUsers.sort(sortUsers);
+
+  // 5. Define a function to render a list of users into a given element
+  const renderUserGroup = (users, element) => {
+    if (users.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "None";
+      li.style.padding = "var(--space-4)";
+      li.style.color = "var(--text-muted)";
+      element.appendChild(li);
+      return;
     }
 
-    if (aHasMessage && !bHasMessage) {
-      return -1
-    }
+    users.forEach(user => {
+      const li = document.createElement("li");
+      li.classList.add("user-item");
+      li.dataset.userUuid = user.uuid;
 
-    if (!aHasMessage && bHasMessage) {
-      return 1
-    }
+      // Status indicator (green for online, white for offline)
+      const statusSpan = document.createElement("span");
+      statusSpan.classList.add("status");
+      statusSpan.textContent = user.isOnline ? "🟢" : "⚪";
 
-    return a.nickname.localeCompare(b.nickname)
-  })
+      // Wrapper for nickname and message preview
+      const userInfoDiv = document.createElement('div');
+      userInfoDiv.style.display = 'flex';
+      userInfoDiv.style.flexDirection = 'column';
+      userInfoDiv.style.flex = 1; // Allow text to take up available space
 
-  otherUsers.forEach(user => {
-    const li = document.createElement("li")
-    li.classList.add("user-item")
+      const nicknameSpan = document.createElement("span");
+      nicknameSpan.classList.add("nickname");
+      nicknameSpan.textContent = user.nickname;
+      userInfoDiv.appendChild(nicknameSpan);
 
-    // Store user UUID as data attribute for easy access
-    li.dataset.userUuid = user.uuid;
+      // Display a preview of the last message if it exists
+      if (user.lastMessage) {
+        const previewSpan = document.createElement("span");
+        previewSpan.classList.add("message-preview");
+        const preview = user.lastMessage.length > 30 ?
+          user.lastMessage.substring(0, 30) + "..." :
+          user.lastMessage;
+        previewSpan.textContent = preview;
+        userInfoDiv.appendChild(previewSpan);
+      }
 
-    // Create status indicator
-    const statusSpan = document.createElement("span")
-    statusSpan.classList.add("status")
-    statusSpan.textContent = user.isOnline ? "🟢" : "⚪"
+      li.appendChild(statusSpan);
+      li.appendChild(userInfoDiv);
 
-    // Create nickname span
-    const nicknameSpan = document.createElement("span")
-    nicknameSpan.classList.add("nickname")
-    nicknameSpan.textContent = user.nickname
+      // Set click event to open chat with this user
+      li.onclick = () => {
+        openChat(user.uuid);
+        showChatPopup();
+      };
 
-    // Create last message preview (if exists)
-    const previewSpan = document.createElement("span")
-    previewSpan.classList.add("message-preview")
-    if (user.lastMessage) {
-      const preview = user.lastMessage.length > 30
-        ? user.lastMessage.substring(0, 30) + "..."
-        : user.lastMessage
-      previewSpan.textContent = preview
-    }
+      // Highlight the user if they are the currently active chat partner
+      if (user.uuid === chatWith) {
+        li.classList.add('active');
+      }
 
-    // Assemble the list item
-    li.appendChild(statusSpan)
-    li.appendChild(nicknameSpan)
-    if (user.lastMessage) {
-      li.appendChild(document.createElement("br"))
-      li.appendChild(previewSpan)
-    }
+      element.appendChild(li);
+    });
+  };
 
-    // Add click handler
-    li.onclick = () => {
-      console.log("User clicked:", user.nickname, user.uuid);
-      openChat(user.uuid);
-      showChatPopup();
-    }
+  // 6. Render both the online and all user lists
+  renderUserGroup(onlineUsers, onlineList);
+  renderUserGroup(allOtherUsers, allUsersList);
 
-    // Highlight if this is the currently active chat
-    if (user.uuid === chatWith) {
-      li.classList.add('active');
-    }
-
-    list.appendChild(li)
-  })
-
-  console.log("Updated user list with", otherUsers.length, "users")
+  console.log(`Updated user list: ${onlineUsers.length} online, ${offlineUsers.length} offline.`);
 }
+
 function setupMessageInput() {
   const chatInput = document.getElementById("chat-input");
   if (!chatInput) {
@@ -1202,22 +1295,22 @@ postModal.addEventListener('click', (event) => {
 // }
 
 function submitPost() {
-  const postForm = document.getElementById("post-form")
+  const postForm = document.getElementById("post-form");
   if (!postForm) {
-    console.error("post-form not found in DOM.")
-    alert("Post form not found. Are you logged in?")
-    return
+    console.error("post-form not found in DOM.");
+    return;
   }
 
-  const title = document.getElementById("post-title").value.trim()
-  const content = document.getElementById("post-content").value.trim()
-
+  const title = document.getElementById("post-title").value.trim();
+  const content = document.getElementById("post-content").value.trim();
   const select = document.getElementById("post-categories-select");
+
+  // Correctly get all selected categories from the new dropdown
   const categories = [...select.selectedOptions].map(option => option.value);
 
   if (!title || !content) {
-    alert("Title and content are required.")
-    return
+    alert("Title and content are required.");
+    return;
   }
 
   if (categories.length === 0) {
@@ -1231,29 +1324,34 @@ function submitPost() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, content, categories }),
   })
-    // console.log(title, content, categories)
-
     .then(res => {
-      if (!res.ok) throw new Error("Post failed")
-      return res.text()
+      if (!res.ok) {
+        // If the server returns an error, show it to the user
+        return res.text().then(text => { throw new Error(text) });
+      }
+      return res.text();
     })
     .then(() => {
-      alert("Post created!")
-      document.getElementById("post-title").value = ""
-      document.getElementById("post-content").value = ""
-      document.getElementById("post-categories").value = ""
-      console.log(postForm, postForm.style)
+      console.log("Post created successfully!");
 
-      if (postForm && postForm.style) postForm.style.display = "none"
-      resetPostFeed()
+      // 1. Clear the form fields correctly
+      document.getElementById("post-title").value = "";
+      document.getElementById("post-content").value = "";
+      select.selectedIndex = -1; // This deselects all options in the dropdown
+
+      // 2. Hide the form
+      postForm.style.display = "none";
+
+      // 3. Reset the category filter to "All" and reload the feed
+      // This ensures your new post is visible regardless of the previous filter
+      selectCategory("");
     })
     .catch(err => {
-      alert("Error posting: " + err.message)
-    })
-
-
+      // This will now catch the TypeError and any server errors
+      console.error("Error posting:", err);
+      alert("Error posting: " + err.message);
+    });
 }
-
 
 
 
@@ -1331,3 +1429,46 @@ function hideTypingIndicator() {
     typingIndicator.remove();
   }
 }
+
+function showNotFound() {
+  const errorDiv = document.getElementById("error-container");
+  errorDiv.style.display = "block";
+  errorDiv.innerHTML = `
+    <div class="error-page">
+      <h1>404</h1>
+      <p>Oops! The page you are looking for does not exist.</p>
+      <button onclick="navigate('/')">Go Home</button>
+    </div>
+  `;
+
+  // hide other sections
+  document.getElementById("login-section").style.display = "none";
+  document.getElementById("register-section").style.display = "none";
+  document.getElementById("forum-view").style.display = "none";
+}
+
+function showServerError() {
+  const errorDiv = document.getElementById("error-container");
+  errorDiv.style.display = "block";
+  errorDiv.innerHTML = `
+    <div class="error-page">
+      <h1>500</h1>
+      <p>Something went wrong on our side. Please try again later.</p>
+      <button onclick="navigate('/')">Go Home</button>
+    </div>
+  `;
+
+  document.getElementById("login-section").style.display = "none";
+  document.getElementById("register-section").style.display = "none";
+  document.getElementById("forum-view").style.display = "none";
+}
+
+// Handle back/forward
+window.addEventListener("popstate", () => {
+  renderRoute(window.location.pathname);
+});
+
+// Initial load
+document.addEventListener("DOMContentLoaded", () => {
+  renderRoute(window.location.pathname);
+});

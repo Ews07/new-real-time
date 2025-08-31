@@ -92,17 +92,31 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Add user to onlineUsers with default offline presence
-		onlineUsers[userUUID] = &UserPresence{
+		// After successful InsertUserFull:
+		newUser := UserPresence{
 			UserUUID:        userUUID,
 			Nickname:        req.Nickname,
-			IsOnline:        false,
+			IsOnline:        false, // not connected yet
 			LastMessage:     "",
 			LastMessageTime: time.Time{},
 		}
 
-		// Broadcast updated user list to all connected clients
-		sendOnlineUsersToAllConnected(db)
+		data := map[string]interface{}{
+			"type": "user_registered",
+			"user": newUser,
+		}
+		encoded, _ := json.Marshal(data)
+
+		// Push to all connected clients (all users, all tabs)
+		for userUUID, conns := range clients {
+			for client := range conns {
+				select {
+				case client.Send <- encoded:
+				default:
+					log.Printf("Client %s channel full, skipping", userUUID)
+				}
+			}
+		}
 
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("User registered successfully"))
@@ -182,22 +196,45 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 
 		sessionToken := cookie.Value
 
-		// Delete session from DB
+		// Get the session details first
+		session, err := GetSession(db, sessionToken)
+		if err != nil {
+			http.Error(w, "Invalid session", http.StatusUnauthorized)
+			return
+		}
+		userUUID := session.UserUUID
+
+		// Delete the session
 		err = DeleteSession(db, sessionToken)
 		if err != nil {
 			http.Error(w, "Error logging out", http.StatusInternalServerError)
 			return
 		}
 
-		// Expire the session cookie
-		expiredCookie := &http.Cookie{
+		// Push real-time logout event and close WS connections for this session
+		if conns, ok := clients[userUUID]; ok {
+			for c := range conns {
+				if c.SessionUUID == sessionToken {
+					// Direct send before closing
+					logoutMsg, _ := json.Marshal(map[string]string{"type": "force_logout"})
+					c.Conn.WriteMessage(websocket.TextMessage, logoutMsg)
+					c.Conn.Close()
+					delete(conns, c)
+				}
+			}
+			if len(conns) == 0 {
+				delete(clients, userUUID)
+			}
+		}
+
+		// Expire cookie
+		http.SetCookie(w, &http.Cookie{
 			Name:     "session_token",
 			Value:    "",
 			Path:     "/",
 			MaxAge:   -1,
 			HttpOnly: true,
-		}
-		http.SetCookie(w, expiredCookie)
+		})
 
 		w.Write([]byte("Logged out successfully"))
 	}
@@ -302,51 +339,52 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		client := &Client{
-			Conn:     conn,
-			UserUUID: userUUID,
-			Send:     make(chan []byte, 256),
+		cookie, err := r.Cookie("session_token")
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
-		clients[userUUID] = client
+		client := &Client{
+			Conn:        conn,
+			UserUUID:    userUUID,
+			SessionUUID: cookie.Value, // ✅ attach session
+			Send:        make(chan []byte, 256),
+		}
 
-		log.Printf("User %s (%s) connected. Total clients: %d", userUUID, nickname, len(clients))
+		// ✅ Add client into map of connections for this user
+		if _, ok := clients[userUUID]; !ok {
+			clients[userUUID] = make(map[*Client]bool)
+		}
+		clients[userUUID][client] = true
 
-		// STEP 1: First, establish this user's presence with their current info
-		// Get their last message data from database for their own profile
+		log.Printf("User %s (%s) connected. Total clients for user: %d", userUUID, nickname, len(clients[userUUID]))
+
+		// STEP 1: Establish presence
 		var currentUserLastMsg string
 		var currentUserLastTime time.Time
-
-		// Find the most recent message this user has sent to anyone
 		row := db.QueryRow(`
-    SELECT content, sent_at 
-    FROM private_messages 
-    WHERE sender_uuid = ? 
-    ORDER BY sent_at DESC 
-    LIMIT 1`, userUUID)
-
+            SELECT content, sent_at 
+            FROM private_messages 
+            WHERE sender_uuid = ? 
+            ORDER BY sent_at DESC 
+            LIMIT 1`, userUUID)
 		err = row.Scan(&currentUserLastMsg, &currentUserLastTime)
-		if err != nil && err != sql.ErrNoRows {
-			log.Printf("Error getting user's last message: %v", err)
-		}
 		if err == sql.ErrNoRows {
-			// User has never sent a message
 			currentUserLastMsg = ""
 			currentUserLastTime = time.Time{}
+		} else if err != nil {
+			log.Printf("Error getting user's last message: %v", err)
 		}
 
-		// Add/update this user's presence with their correct data
 		if existingUser, exists := onlineUsers[userUUID]; exists {
-			log.Printf("Updating existing user %s to online", nickname)
 			existingUser.IsOnline = true
 			existingUser.Nickname = nickname
-			// Keep their existing LastMessage data or update if we found something more recent
 			if !currentUserLastTime.IsZero() && currentUserLastTime.After(existingUser.LastMessageTime) {
 				existingUser.LastMessage = currentUserLastMsg
 				existingUser.LastMessageTime = currentUserLastTime
 			}
 		} else {
-			log.Printf("Creating new presence entry for user %s", nickname)
 			onlineUsers[userUUID] = &UserPresence{
 				UserUUID:        userUUID,
 				Nickname:        nickname,
@@ -356,22 +394,18 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// STEP 2: Then load all other users' presence data
-		// This will not affect the current user since loadUserPresenceFromDB
-		// only processes users WHERE uuid != userUUID
+		// STEP 2: Load presence for other users
 		loadUserPresenceFromDB(db, userUUID)
-		log.Printf("User %s presence established, loading other users completed", nickname)
 
 		rows, _ := db.Query(`
-		SELECT DISTINCT CASE
-			WHEN sender_uuid = ? THEN receiver_uuid
-			ELSE sender_uuid
-		END AS other_uuid
-		FROM private_messages
-		WHERE sender_uuid = ? OR receiver_uuid = ?
-	`, userUUID, userUUID, userUUID)
+            SELECT DISTINCT CASE
+                WHEN sender_uuid = ? THEN receiver_uuid
+                ELSE sender_uuid
+            END AS other_uuid
+            FROM private_messages
+            WHERE sender_uuid = ? OR receiver_uuid = ?`,
+			userUUID, userUUID, userUUID)
 		defer rows.Close()
-
 		for rows.Next() {
 			var other string
 			if err := rows.Scan(&other); err == nil {
@@ -390,16 +424,21 @@ func WebSocketHandler(db *sql.DB) http.HandlerFunc {
 
 		sendOnlineUsersToAllConnected(db)
 
+		// Run pumps
 		go writePump(client)
 		readPump(db, client)
 
-		// On disconnect (after readPump finishes)
-		delete(clients, userUUID)
-		if u, ok := onlineUsers[userUUID]; ok {
-			u.IsOnline = false
+		// ✅ Cleanup when this client disconnects
+		delete(clients[userUUID], client)
+		if len(clients[userUUID]) == 0 {
+			delete(clients, userUUID)
+			if u, ok := onlineUsers[userUUID]; ok {
+				u.IsOnline = false
+			}
+			sendOnlineUsersToAllConnected(db)
 		}
-		// Notify all clients that this user went offline
-		sendOnlineUsersToAllConnected(db)
+
+		log.Printf("User %s (%s) disconnected. Remaining connections: %d", userUUID, nickname, len(clients[userUUID]))
 	}
 }
 

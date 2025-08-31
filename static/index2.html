@@ -55,7 +55,10 @@
     </div>
     <nav class="main-nav">
       <button id="logout-btn">Logout</button>
-      <button id="toggle-theme-btn">Toggle Light Mode</button>
+      <button id="toggle-theme-btn" aria-label="Toggle theme">
+        <span id="sun-icon">☀️</span>
+        <span id="moon-icon">🌙</span>
+      </button>
     </nav>
   </header>
 
@@ -89,7 +92,6 @@
       <p>Already have an account? <button id="show-login">Back to Login</button></p>
     </div>
 
-
     <div id="forum-view">
       <div class="main-column-header">
         <h2>Welcome to 01Forum!</h2>
@@ -119,12 +121,16 @@
         </div>
 
         <div id="user-column">
-          <h4>ALL USERS</h4>
-          <ul id="all-users">
+          <h4>ONLINE</h4>
+          <ul id="online-users-list">
+          </ul>
+          <h4 style="margin-top: 1.5rem;">ALL USERS</h4>
+          <ul id="all-users-list">
           </ul>
         </div>
       </div>
     </div>
+    <div id="error-container" style="display:none;"></div>
   </main>
 
   <script src="/static/app.js"></script>

@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	//Database Initialization
+	// Database Initialization
 	db, err := InitDB("forum.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
@@ -16,12 +16,12 @@ func main() {
 
 	defer db.Close()
 
-	//Router Setup
+	// Router Setup
 	r := mux.NewRouter()
-	//Public Routes
+	// Public Routes
 	r.HandleFunc("/register", RegisterHandler(db)).Methods("POST")
 	r.HandleFunc("/login", LoginHandler(db)).Methods("POST")
-	//Protected Routes
+	// Protected Routes
 	r.Handle("/me", AuthMiddleware(MeHandler(db), db)).Methods("GET")
 	r.Handle("/logout", AuthMiddleware(LogoutHandler(db), db)).Methods("POST")
 	r.Handle("/posts", AuthMiddleware(CreatePostHandler(db), db)).Methods("POST")
@@ -39,6 +39,24 @@ func main() {
 	// Serve index.html at root
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/index2.html")
+	})
+	// Custom 404 - let frontend handle it
+	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always serve index2.html so SPA can render its own 404 view
+		http.ServeFile(w, r, "./static/index2.html")
+	})
+
+	// Optional: wrap all handlers for 500 recovery
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("Recovered from panic: %v", rec)
+					http.ServeFile(w, r, "./static/index2.html")
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
 	})
 
 	// Start server
